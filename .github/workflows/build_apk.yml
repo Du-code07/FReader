@@ -552,7 +552,7 @@ jobs:
               content = (root / name).read_bytes()
               assert len(content) == expected['bytes'], f'Wrong DOCX asset size: {name}'
               assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong DOCX asset checksum: {name}'
-          for name in ['index.html', 'reader.js', 'reader.css', 'worker.js', 'THIRD_PARTY_NOTICES.txt']:
+          for name in ['index.html', 'reader.js', 'reader.css', 'worker.js', 'rtf_images.js', 'rtf_layout.js', 'THIRD_PARTY_NOTICES.txt']:
               assert (root.parent / name).is_file(), f'Missing DOCX asset: {name}'
           root = Path('assets/docx/metafile')
           provenance = json.loads((root / 'PROVENANCE.json').read_text())
@@ -561,12 +561,20 @@ jobs:
               content = (root / name).read_bytes()
               assert len(content) == expected['bytes'], f'Wrong metafile asset size: {name}'
               assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong metafile checksum: {name}'
-          print('Verified pinned OpenDocument.core 7.7.0, metafile converter and offline DOCX reader assets.')
+          root = Path('assets/docx/fonts')
+          provenance = json.loads((root / 'PROVENANCE.json').read_text())
+          for name, expected in provenance['artifacts'].items():
+              content = (root / name).read_bytes()
+              assert len(content) == expected['bytes'], f'Wrong punctuation font size: {name}'
+              assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong punctuation font checksum: {name}'
+          for name in provenance['licenseNotices']:
+              assert (root / name).is_file(), f'Missing font license: {name}'
+          print('Verified pinned OpenDocument.core 7.7.0, metafile converter, RTF reader and offline fonts.')
           PYVERIFY
 
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
-          BUILD_NUM=$((124 + ${{ github.run_number }}))
+          BUILD_NUM=$((125 + ${{ github.run_number }}))
           flutter pub get
           flutter build apk --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM
           flutter build appbundle --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM
