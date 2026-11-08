@@ -566,7 +566,7 @@ jobs:
 
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
-          BUILD_NUM=$((123 + ${{ github.run_number }}))
+          BUILD_NUM=$((124 + ${{ github.run_number }}))
           flutter pub get
           flutter build apk --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM
           flutter build appbundle --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM
