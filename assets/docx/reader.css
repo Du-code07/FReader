@@ -20,3 +20,11 @@ body[data-theme="sepia"] .page { filter: sepia(0.23); }
 body[data-theme="dark"] .page { filter: invert(0.88) hue-rotate(180deg); }
 body[data-theme="dark"] .page img { filter: invert(1) hue-rotate(180deg); }
 ::selection { background: rgba(255, 193, 7, 0.4); }
+.rtf-paper { position: relative; color: #000; background: #fff; }
+.rtf-paragraph { display: block; padding: 0; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; orphans: 2; widows: 2; }
+.rtf-paragraph > .rtf-run { position: relative; top: var(--rtf-leading, 0px); }
+.rtf-paragraph img { vertical-align: baseline; }
+.rtf-page-break { break-after: column; }
+.rtf-page-header, .rtf-page-footer { position: absolute; }
+.rtf-table { table-layout: fixed; border-collapse: collapse; }
+.rtf-table td { padding: 0; vertical-align: top; }

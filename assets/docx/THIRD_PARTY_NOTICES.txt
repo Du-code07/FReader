@@ -19,6 +19,12 @@ there and in assets/hwp/THIRD_PARTY_NOTICES.txt. Missing document fonts are
 substituted. FReader paginates the rendered content to the document's page size;
 the resulting pagination and complex Word features can differ from Microsoft Word.
 
+Additional Noto Sans KR and Noto Serif KR CJK punctuation subsets are bundled
+under fonts/. They use the same SIL Open Font License notices above. Original
+Google Fonts download URLs, sizes and checksums are recorded in fonts/PROVENANCE.json.
+The local RTF layout adapter reads paragraph/run styles, page geometry and page
+furniture separately; it does not modify OpenDocument.core or the input file.
+
 emf-converter 4.3.5 (Apache-2.0): offline EMF/WMF image conversion.
 Source: https://github.com/ChristopherVR/emf-converter
 License and provenance: metafile/LICENSE and metafile/PROVENANCE.json.

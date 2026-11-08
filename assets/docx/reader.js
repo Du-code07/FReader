@@ -98,7 +98,7 @@ function fontKind(name) {
   return /바탕|명조|궁서|batang|myeong|serif|times|cambria/i.test(name) ? 'serif' : 'sans';
 }
 async function loadFonts(root) {
-  const names = new Set(['맑은 고딕', '바탕', '굴림', '돋움', 'Calibri', 'Arial', 'Times New Roman']);
+  const names = new Set(['FReaderSans', 'FReaderSerif', '맑은 고딕', '바탕', '굴림', '돋움', 'Calibri', 'Arial', 'Times New Roman']);
   for (const el of root.querySelectorAll('[style]')) {
     for (const part of el.style.fontFamily.split(',')) {
       const name = part.trim().replace(/^['"]|['"]$/g, '');
@@ -112,6 +112,10 @@ async function loadFonts(root) {
     const job = Promise.all((kind === 'math' ? [400] : [400, 700]).map(async weight => {
       const face = new FontFace(name, `local(${JSON.stringify(name)}), url(../hwp/fonts/${base}-${weight === 700 ? 'Bold' : 'Regular'}.woff2)`, { weight: String(weight) });
       await face.load(); document.fonts.add(face);
+      if (kind !== 'math') {
+        const symbols = new FontFace(name, `url(./fonts/${base}-Symbols-${weight === 700 ? 'Bold' : 'Regular'}.ttf)`, { weight: String(weight), unicodeRange: 'U+3000-303F' });
+        await symbols.load(); document.fonts.add(symbols);
+      }
     }));
     fonts.set(name, job); return job;
   }));
@@ -199,6 +203,22 @@ async function preparePages(html, current) {
   for (const source of measure.children) {
     const inner = source.querySelector(':scope > .odr-page-inner');
     if (!inner) throw new Error('Word 문서 본문 구조가 올바르지 않습니다.');
+    if (source.classList.contains('rtf-paper')) {
+      // Office reserves space for page furniture even when the saved margins
+      // would otherwise overlap it. Measure after fonts and image extents load.
+      for (const kind of ['header', 'footer']) {
+        const furniture = source.querySelector('.rtf-page-' + kind);
+        if (!furniture?.children.length) continue;
+        let height = 0;
+        for (const story of furniture.children) {
+          for (const other of furniture.children) other.style.display = other === story ? 'block' : 'none';
+          height = Math.max(height, furniture.getBoundingClientRect().height);
+        }
+        const edge = kind === 'header' ? 'Top' : 'Bottom';
+        const offset = parseFloat(furniture.style[kind === 'header' ? 'top' : 'bottom']) || 0;
+        inner.style['margin' + edge] = Math.max(parseFloat(inner.style['margin' + edge]) || 0, offset + height) + 'px';
+      }
+    }
     const bounds = source.getBoundingClientRect(), css = getComputedStyle(inner);
     const width = bounds.width, height = bounds.height;
     if (!(width > 0 && height > 0 && width < 20000 && height < 20000)) throw new Error('Word 문서 페이지 크기가 올바르지 않습니다.');
@@ -212,7 +232,7 @@ async function preparePages(html, current) {
     Object.assign(inner.style, { width: `${bodyWidth}px`, height: `${bodyHeight}px`, columnWidth: `${bodyWidth}px` });
     const columns = Math.max(1, Math.ceil((inner.scrollWidth - 1) / bodyWidth));
     if (result.length + columns > 10000) throw new Error('표시할 Word 문서 페이지 수가 너무 많습니다.');
-    for (let column = 0; column < columns; column++) result.push({ source, column, width, height, bodyWidth });
+    for (let column = 0; column < columns; column++) result.push({ source, column, width, height, bodyWidth, sectionPageCount: columns });
   }
   pages = result;
 }
@@ -269,11 +289,25 @@ async function render() {
     frame.setAttribute('aria-label', `${index + 1} / ${pages.length}`);
     const source = used.has(entry.source) ? entry.source.cloneNode(true) : entry.source; used.add(entry.source);
     source.querySelector('.freader-columns').style.transform = `translateX(${-entry.column * entry.bodyWidth}px)`;
+    if (source.classList.contains('rtf-paper')) {
+      const start = Number(source.dataset.rtfStart), number = start > 0 ? start + entry.column : index + 1;
+      for (const field of source.querySelectorAll('[data-rtf-field]')) {
+        field.textContent = String(field.dataset.rtfField === 'NUMPAGES' ? pages.length : field.dataset.rtfField === 'SECTIONPAGES' ? entry.sectionPageCount : number);
+      }
+      for (const kind of ['header', 'footer']) {
+        const furniture = source.querySelector('.rtf-page-' + kind); if (!furniture) continue;
+        const suffix = source.dataset.rtfFirst === 'true' && entry.column === 0 ? 'f'
+          : source.dataset.rtfFacing === 'true' ? (number % 2 ? 'r' : 'l') : '';
+        const selected = furniture.querySelector(`[data-rtf-story="${kind + suffix}"]`)
+          || (suffix !== 'f' ? furniture.querySelector(`[data-rtf-story="${kind}"]`) : null);
+        for (const story of furniture.children) story.style.display = story === selected ? 'block' : 'none';
+      }
+    }
     frame.appendChild(source); fragment.appendChild(frame);
   }
   host.replaceChildren(fragment); fitPages();
   const visible = [...host.querySelectorAll('img[data-resource]')].filter(img => {
-    const clip = img.closest('.freader-content').getBoundingClientRect();
+    const clip = (img.closest('.freader-content') || img.closest('.page')).getBoundingClientRect();
     return [...img.getClientRects()].some(r => r.width > 0 && r.height > 0 && r.right > clip.left + .1 && r.left < clip.right - .1 && r.bottom > clip.top + .1 && r.top < clip.bottom - .1);
   });
   activeImagePaths = new Set(visible.map(img => img.dataset.resource));

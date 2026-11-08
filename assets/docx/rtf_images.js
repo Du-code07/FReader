@@ -33,7 +33,7 @@ function koreanRun(bytes, start) {
   return { start, end, bytes: encoder.encode(escaped + '}') };
 }
 
-export function prepareRtfPictures(bytes) {
+export function prepareRtfPictures(bytes, { includePageFurniture = false } = {}) {
   const empty = { bytes, pictures: [], prefix: '' };
   if (bytes.length < 6 || String.fromCharCode(...bytes.subarray(0, 6)) !== '{\\rtf1') return empty;
   const stack = [], replacements = [], pictures = [];
@@ -107,7 +107,7 @@ export function prepareRtfPictures(bytes) {
         frame.destination = word;
         if (word === 'shppict') frame.hidden = frame.parent?.hidden || false;
       }
-      if (frame && hiddenDestinations.has(word)) frame.hidden = true;
+      if (frame && hiddenDestinations.has(word) && !(includePageFurniture && /^(header|footer)[lrf]?$/.test(word))) frame.hidden = true;
       if (word === 'pict' && frame && !frame.hidden) {
         frame.image = { chunks: [], length: 0, highNibble: null, mimeType: 'application/octet-stream', width: 0, height: 0, scaleX: 100, scaleY: 100 };
       }
