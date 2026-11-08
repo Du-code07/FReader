@@ -1,9 +1,10 @@
 // Thin, read-only FReader host. The vendored rhwp engine is unmodified.
 const host = document.getElementById('pages');
-const MAX_BYTES = 128 * 1024 * 1024;
+const MAX_BYTES = 256 * 1024 * 1024;
 const CACHE_BYTES = 12 * 1024 * 1024;
 const cache = new Map();
 const fonts = new Map();
+let activeEntries = new Set();
 let cachedBytes = 0;
 let engine, doc, incoming, received = 0;
 let page = 0, count = 0, renderSerial = 0, disposed = false;
@@ -78,7 +79,7 @@ function configure(next = {}) {
   fitPages();
 }
 function beginDocument(length, config) {
-  if (!Number.isSafeInteger(length) || length < 1 || length > MAX_BYTES) throw new Error('열 수 있는 문서 크기는 128MB 이하입니다.');
+  if (!Number.isSafeInteger(length) || length < 1 || length > MAX_BYTES) throw new Error('열 수 있는 문서 크기는 256MB 이하입니다.');
   releaseDocument();
   incoming = new Uint8Array(length); received = 0;
   configure(config);
@@ -136,20 +137,47 @@ async function display(position) {
 function next() { return display(page + (options.spread ? 2 : 1)); }
 function previous() { return display(page - (options.spread ? 2 : 1)); }
 function progress(value) { return display(Math.round(Math.max(0, Math.min(1, Number(value))) * (count - 1))); }
+function releaseEntry(entry) {
+  for (const url of entry.urls) URL.revokeObjectURL(url);
+  entry.urls = [];
+}
+function releaseIfUnused(entry) {
+  if (!activeEntries.has(entry) && cache.get(entry.index) !== entry) releaseEntry(entry);
+}
 function svgForPage(index) {
-  let source = cache.get(index);
-  if (source !== undefined) { cache.delete(index); cache.set(index, source); return source; }
-  source = doc.renderPageSvg(index);
-  // Bounded LRU: only render requested pages, never the whole document.
-  const size = source.length * 2;
-  if (size <= CACHE_BYTES) {
-    while (cache.size && (cache.size >= 4 || cachedBytes + size > CACHE_BYTES)) {
-      const oldest = cache.keys().next().value;
-      cachedBytes -= cache.get(oldest).length * 2; cache.delete(oldest);
+  let entry = cache.get(index);
+  if (entry) { cache.delete(index); cache.set(index, entry); return entry; }
+  const source = doc.renderPageSvg(index), template = safeSvg(source), urls = [];
+  let size = source.length * 2;
+  try {
+    for (const img of template.querySelectorAll('image')) {
+      for (const attr of [...img.attributes]) {
+        if (attr.localName !== 'href' || !attr.value.startsWith('data:image/')) continue;
+        const uri = attr.value, comma = uri.indexOf(',');
+        if (comma < 0) continue;
+        const header = uri.slice(5, comma), mime = header.split(';')[0];
+        let data;
+        if (/;base64/i.test(header)) {
+          const binary = atob(uri.slice(comma + 1));
+          data = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i);
+        } else data = new TextEncoder().encode(decodeURIComponent(uri.slice(comma + 1)));
+        const blob = new Blob([data], { type: mime }), url = URL.createObjectURL(blob);
+        urls.push(url); attr.value = url; size += blob.size - uri.length * 2 + url.length * 2;
+      }
     }
-    cache.set(index, source); cachedBytes += size;
+  } catch (error) { for (const url of urls) URL.revokeObjectURL(url); throw error; }
+  entry = { index, template, urls, size: Math.max(0, size) };
+  // Keep only recent pages. A single very large page is displayable, but is
+  // released on navigation instead of expanding the cache indefinitely.
+  if (entry.size <= CACHE_BYTES) {
+    while (cache.size && (cache.size >= 4 || cachedBytes + entry.size > CACHE_BYTES)) {
+      const oldest = cache.keys().next().value, removed = cache.get(oldest);
+      cachedBytes -= removed.size; cache.delete(oldest); releaseIfUnused(removed);
+    }
+    cache.set(index, entry); cachedBytes += entry.size;
   }
-  return source;
+  return entry;
 }
 function safeSvg(source) {
   const parsed = new DOMParser().parseFromString(source, 'image/svg+xml');
@@ -170,10 +198,11 @@ function safeSvg(source) {
 async function render() {
   if (!doc || disposed) return;
   const serial = ++renderSerial;
-  const fragment = document.createDocumentFragment();
+  const fragment = document.createDocumentFragment(), nextEntries = new Set();
   const pages = options.spread && page + 1 < count ? [page, page + 1] : [page];
   for (const index of pages) {
-    const svg = safeSvg(svgForPage(index));
+    const entry = svgForPage(index); nextEntries.add(entry);
+    const svg = entry.template.cloneNode(true);
     const box = svg.getAttribute('viewBox')?.trim().split(/[\s,]+/).map(Number);
     const width = box?.[2] || parseFloat(svg.getAttribute('width'));
     const height = box?.[3] || parseFloat(svg.getAttribute('height'));
@@ -186,6 +215,8 @@ async function render() {
   }
   if (serial !== renderSerial || disposed) return;
   host.replaceChildren(fragment);
+  const previousEntries = activeEntries; activeEntries = nextEntries;
+  for (const entry of previousEntries) releaseIfUnused(entry);
   fitPages();
   await new Promise(resolve => requestAnimationFrame(resolve));
 }
@@ -222,14 +253,15 @@ function releaseDocument() {
   if (doc) { doc.free(); doc = null; }
   if (incoming) incoming.fill(0);
   incoming = null; received = 0; count = 0; page = 0;
-  cache.clear(); cachedBytes = 0; host.replaceChildren();
+  for (const entry of new Set([...cache.values(), ...activeEntries])) releaseEntry(entry);
+  cache.clear(); activeEntries.clear(); cachedBytes = 0; host.replaceChildren();
 }
 function destroy() {
   disposed = true; clearInterval(bridgeTimer); resizeObserver.disconnect(); releaseDocument(); pendingEvents = [];
 }
 const resizeObserver = new ResizeObserver(fitPages); resizeObserver.observe(host);
 window.freaderHwp = { beginDocument, appendChunk, openDocument, configure, display, next, previous, progress, highlightSelection, destroy,
-  getState: () => ({ ready: readyReported, page, count, cachedPages: cache.size, cachedBytes, received, spread: options.spread }) };
+  getState: () => ({ ready: readyReported, page, count, cachedPages: cache.size, cachedBytes, received, spread: options.spread, maxBytes: MAX_BYTES }) };
 window.addEventListener('pagehide', destroy, { once: true });
 
 (async () => {

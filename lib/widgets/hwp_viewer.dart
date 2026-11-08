@@ -59,7 +59,7 @@ class _HwpViewerState extends State<HwpViewer> {
       '$_origin/assets/flutter_assets/assets/${_isDocx ? 'docx' : 'hwp'}/index.html';
   String get _jsObject => _isDocx ? 'freaderDocx' : 'freaderHwp';
   List<Map<String, Object>> _pageBreaks = [];
-  static const _maxBytes = 128 * 1024 * 1024;
+  static const _maxBytes = 256 * 1024 * 1024;
   static const _chunkBytes = 192 * 1024;
   InAppWebViewController? _web;
   RandomAccessFile? _file;
@@ -89,7 +89,7 @@ class _HwpViewerState extends State<HwpViewer> {
 
   void _armTimeout() {
     _timeout?.cancel();
-    _timeout = Timer(const Duration(seconds: 120), () {
+    _timeout = Timer(const Duration(minutes: 5), () {
       _reportError(
         '$_format 문서 표시 시간이 초과되었습니다. Android System WebView와 파일 상태를 확인해 주세요.',
       );
@@ -143,7 +143,7 @@ class _HwpViewerState extends State<HwpViewer> {
       final source = File(widget.filePath);
       final length = await source.length();
       if (length < 1 || length > _maxBytes) {
-        throw const FormatException('비어 있거나 128MB를 초과하는 문서입니다.');
+        throw const FormatException('비어 있거나 256MB를 초과하는 문서입니다.');
       }
       if (_isDocx) {
         final path = widget.filePath;
@@ -168,6 +168,7 @@ class _HwpViewerState extends State<HwpViewer> {
           throw const FormatException('문서를 읽는 중 파일 크기가 변경되었습니다.');
         await _invoke('appendChunk', [offset, base64Encode(chunk)]);
         offset += chunk.length;
+        _armTimeout();
       }
       await _closeFile();
       if (!_disposed && !_failed && generation == _generation)

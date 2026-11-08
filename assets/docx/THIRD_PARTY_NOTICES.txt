@@ -18,3 +18,7 @@ already bundled under assets/hwp/fonts. Their licenses and notices are included
 there and in assets/hwp/THIRD_PARTY_NOTICES.txt. Missing document fonts are
 substituted. FReader paginates the rendered content to the document's page size;
 the resulting pagination and complex Word features can differ from Microsoft Word.
+
+emf-converter 4.3.5 (Apache-2.0): offline EMF/WMF image conversion.
+Source: https://github.com/ChristopherVR/emf-converter
+License and provenance: metafile/LICENSE and metafile/PROVENANCE.json.

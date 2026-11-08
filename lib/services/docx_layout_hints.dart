@@ -1,17 +1,22 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:xml/xml.dart';
 
 /// Supplement the engine's paragraph breaks with Word's inline page breaks.
 /// Only layout hints are read; the original document bytes are never changed.
 class DocxLayoutHints {
   static List<Map<String, Object>> read(String path) {
+    InputFileStream? input;
     try {
-      final bytes = File(path).readAsBytesSync();
+      input = InputFileStream(path);
       // Encrypted Office files are compound files; the engine decrypts them.
-      if (bytes.length < 4 || bytes[0] != 0x50 || bytes[1] != 0x4b) return [];
-      final archive = ZipDecoder().decodeBytes(bytes);
+      if (input.length < 4 ||
+          input.readByte() != 0x50 ||
+          input.readByte() != 0x4b)
+        return [];
+      input.position = 0;
+      // Read only the main XML entry. Do not duplicate a photo-heavy ZIP in RAM.
+      final archive = ZipDecoder().decodeBuffer(input);
       final entry = archive.findFile('word/document.xml');
       if (entry == null || entry.size > 16 * 1024 * 1024) return [];
       final xml = XmlDocument.parse(utf8.decode(entry.content as List<int>));
@@ -19,6 +24,8 @@ class DocxLayoutHints {
     } catch (_) {
       // Hints are optional. Format/password errors are reported by the engine.
       return [];
+    } finally {
+      input?.closeSync();
     }
   }
 

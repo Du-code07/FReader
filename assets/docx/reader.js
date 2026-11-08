@@ -1,8 +1,12 @@
 // Read-only adapter for OpenDocument.core. All assets and documents stay local.
 const host = document.getElementById('pages');
 const measure = document.getElementById('measure');
-const MAX_BYTES = 128 * 1024 * 1024;
+const MAX_BYTES = 256 * 1024 * 1024;
 let incoming, received = 0, page = 0, pages = [], disposed = false;
+const IMAGE_CACHE_BYTES = 32 * 1024 * 1024;
+const imageCache = new Map(), imageJobs = new Map(), brokenImages = new Set();
+let resourceIndex = new Map(), originalSources = new Set(), resourceSession = 0;
+let imageCacheBytes = 0, activeImagePaths = new Set(), renderSerial = 0;
 let ready = false, requestId = 0, generation = 0, awaitingPassword = false, unavailableImages = 0;
 let options = { theme: 'white', spread: false, rtl: false, position: null, progress: 0 };
 const requests = new Map(), fonts = new Map();
@@ -39,11 +43,15 @@ function request(action, data = {}, transfer = []) {
   });
 }
 function clearPages() {
+  renderSerial++;
+  for (const item of imageCache.values()) URL.revokeObjectURL(item.url);
+  imageCache.clear(); imageJobs.clear(); brokenImages.clear();
+  resourceIndex.clear(); originalSources.clear(); activeImagePaths.clear(); imageCacheBytes = 0;
   pages = []; page = 0; unavailableImages = 0; host.replaceChildren(); measure.replaceChildren();
   document.querySelectorAll('style[data-document]').forEach(el => el.remove());
 }
 function beginDocument(length, config) {
-  if (!Number.isSafeInteger(length) || length < 1 || length > MAX_BYTES) throw new Error('열 수 있는 문서 크기는 128MB 이하입니다.');
+  if (!Number.isSafeInteger(length) || length < 1 || length > MAX_BYTES) throw new Error('열 수 있는 문서 크기는 256MB 이하입니다.');
   generation++; clearPages();
   if (incoming) incoming.fill(0);
   incoming = new Uint8Array(length); received = 0; awaitingPassword = false;
@@ -71,11 +79,13 @@ async function openDocument(password = null) {
     if (result.type === 'password') { awaitingPassword = true; emit('password', { incorrect: result.incorrect }); return false; }
     awaitingPassword = false;
     if (result.type === 'error') return fail(result.message);
+    resourceSession = result.session;
+    resourceIndex = new Map((result.resources || []).map(r => [r.path, r]));
     await preparePages(result.html, current);
     if (disposed || current !== generation) return false;
     const saved = /^docx:(\d+)$/.exec(options.position || '');
     page = clampPage(saved ? Number(saved[1]) : Math.round(Number(options.progress || 0) * (pages.length - 1)));
-    render(); emit('loaded', { pageCount: pages.length, unavailableImages }); reportLocation();
+    await render(); emit('loaded', { pageCount: pages.length, unavailableImages }); reportLocation();
     return true;
   } catch (error) { return fail(error); }
   finally { password = null; }
@@ -98,7 +108,7 @@ async function loadFonts(root) {
     if (name.length > 160 || /[\x00-\x1f]/.test(name)) return;
     const kind = fontKind(name), base = kind === 'math' ? 'LatinModernMath' : kind === 'serif' ? 'NotoSerifKR' : 'NotoSansKR';
     const job = Promise.all((kind === 'math' ? [400] : [400, 700]).map(async weight => {
-      const face = new FontFace(name, `url(../hwp/fonts/${base}-${weight === 700 ? 'Bold' : 'Regular'}.woff2)`, { weight: String(weight) });
+      const face = new FontFace(name, `local(${JSON.stringify(name)}), url(../hwp/fonts/${base}-${weight === 700 ? 'Bold' : 'Regular'}.woff2)`, { weight: String(weight) });
       await face.load(); document.fonts.add(face);
     }));
     fonts.set(name, job); return job;
@@ -106,6 +116,10 @@ async function loadFonts(root) {
   await Promise.all(['400 16px FReaderSans', '700 16px FReaderSans', '400 16px FReaderSerif', '700 16px FReaderSerif', '400 16px FReaderMath'].map(font => document.fonts.load(font)));
 }
 function sanitize(parsed) {
+  for (const img of parsed.querySelectorAll('img')) {
+    const path = img.getAttribute('src');
+    if (resourceIndex.has(path)) { img.dataset.resource = path; img.removeAttribute('src'); }
+  }
   parsed.querySelectorAll('script,link,meta,base,iframe,object,embed,form').forEach(el => el.remove());
   for (const el of parsed.querySelectorAll('*')) {
     for (const attr of [...el.attributes]) {
@@ -156,18 +170,23 @@ async function preparePages(html, current) {
     source.style.width ||= '210mm';
     measure.appendChild(document.importNode(source, true));
   }
-  await Promise.all([...measure.querySelectorAll('img')].map(async img => {
-    try {
-      if (!img.hasAttribute('src')) throw new Error('Unsupported picture');
-      await img.decode();
-    } catch (_) {
-      // A legacy or damaged picture must not prevent reading the whole file.
-      const notice = document.createElement('span');
-      notice.className = 'freader-missing-image'; notice.style.cssText = img.style.cssText;
-      notice.textContent = '이 그림은 표시할 수 없습니다.';
-      img.replaceWith(notice); unavailableImages++;
+  originalSources = new Set(measure.children);
+  // OOXML specifies the display extents. Reserve them without decoding every
+  // photograph. Only unusual images without extents need an intrinsic-size probe.
+  for (const img of measure.querySelectorAll('img')) {
+    if (!img.dataset.resource && !img.getAttribute('src')) { missingImage(img); continue; }
+    if (!(parseFloat(img.style.width || img.getAttribute('width')) > 0) ||
+        !(parseFloat(img.style.height || img.getAttribute('height')) > 0)) {
+      try {
+        const item = img.dataset.resource ? await imageFor(img.dataset.resource) : { url: img.src };
+        if (disposed || current !== generation) return;
+        const probe = new Image(); probe.src = item.url; await probe.decode();
+        if (!img.style.width && !img.hasAttribute('width')) img.style.width = `${probe.naturalWidth}px`;
+        if (!img.style.height && !img.hasAttribute('height')) img.style.height = `${probe.naturalHeight}px`;
+        probe.src = ''; trimImages();
+      } catch (_) { missingImage(img); }
     }
-  }));
+  }
   const result = [];
   for (const source of measure.children) {
     const inner = source.querySelector(':scope > .odr-page-inner');
@@ -191,19 +210,76 @@ async function preparePages(html, current) {
 }
 function clampPage(value) { return Math.max(0, Math.min(pages.length - 1, Number.isFinite(value) ? Math.trunc(value) : 0)); }
 function reportLocation() { emit('location', { page, pageCount: pages.length, position: `docx:${page}`, progress: pages.length > 1 ? page / (pages.length - 1) : 1 }); }
-function render() {
+function trimImages() {
+  for (const [path, item] of imageCache) {
+    if (imageCacheBytes <= IMAGE_CACHE_BYTES && imageCache.size <= 24) break;
+    if (activeImagePaths.has(path)) continue;
+    imageCache.delete(path); imageCacheBytes -= item.size; URL.revokeObjectURL(item.url);
+  }
+}
+async function imageFor(path) {
+  if (brokenImages.has(path)) throw new Error('Unsupported image');
+  if (imageCache.has(path)) {
+    const item = imageCache.get(path); imageCache.delete(path); imageCache.set(path, item); return item;
+  }
+  if (imageJobs.has(path)) return imageJobs.get(path);
+  const current = generation, requestedSession = resourceSession;
+  const job = (async () => {
+    const result = await request('resource', { path, session: requestedSession });
+    if (disposed || current !== generation || requestedSession !== resourceSession) throw new Error('Expired image');
+    if (result.type !== 'resource' || !result.bytes) throw new Error(result.message || 'Missing image');
+    const blob = new Blob([result.bytes], { type: result.mimeType });
+    const item = { url: URL.createObjectURL(blob), size: blob.size };
+    imageCache.set(path, item); imageCacheBytes += item.size; return item;
+  })();
+  imageJobs.set(path, job);
+  try { return await job; }
+  finally { if (imageJobs.get(path) === job) imageJobs.delete(path); }
+}
+function missingImage(img, reason) {
+  const key = img.dataset.resource || img.getAttribute('src') || 'missing';
+  if (!brokenImages.has(key)) { brokenImages.add(key); unavailableImages++; }
+  const notice = document.createElement('span');
+  notice.className = 'freader-missing-image'; notice.dataset.resource = key; if (reason) notice.dataset.reason = String(reason); notice.style.cssText = img.style.cssText;
+  notice.textContent = '이 그림은 표시할 수 없습니다.'; img.replaceWith(notice);
+}
+async function render() {
   if (!pages.length || disposed) return;
-  const fragment = document.createDocumentFragment();
+  const serial = ++renderSerial;
+  // Reuse the original layout tree in single-page mode. A spread only needs
+  // one extra tree when both displayed pages belong to the same section.
+  for (const frame of host.children) {
+    for (const img of frame.querySelectorAll('img[data-resource]')) img.removeAttribute('src');
+    const source = frame.firstElementChild;
+    if (originalSources.has(source)) measure.appendChild(source);
+  }
+  const fragment = document.createDocumentFragment(), used = new Set();
   for (let index = page; index < Math.min(pages.length, page + (options.spread ? 2 : 1)); index++) {
     const entry = pages[index], frame = document.createElement('section');
     frame.className = 'page'; frame.dataset.page = String(index);
     frame.dataset.width = String(entry.width); frame.dataset.height = String(entry.height);
     frame.setAttribute('aria-label', `${index + 1} / ${pages.length}`);
-    const source = entry.source.cloneNode(true);
+    const source = used.has(entry.source) ? entry.source.cloneNode(true) : entry.source; used.add(entry.source);
     source.querySelector('.freader-columns').style.transform = `translateX(${-entry.column * entry.bodyWidth}px)`;
     frame.appendChild(source); fragment.appendChild(frame);
   }
   host.replaceChildren(fragment); fitPages();
+  const visible = [...host.querySelectorAll('img[data-resource]')].filter(img => {
+    const clip = img.closest('.freader-content').getBoundingClientRect();
+    return [...img.getClientRects()].some(r => r.width > 0 && r.height > 0 && r.right > clip.left + .1 && r.left < clip.right - .1 && r.bottom > clip.top + .1 && r.top < clip.bottom - .1);
+  });
+  activeImagePaths = new Set(visible.map(img => img.dataset.resource));
+  trimImages();
+  // Sequential decoding bounds the temporary pixel buffers for photo-heavy files.
+  for (const img of visible) {
+    if (disposed || serial !== renderSerial) return;
+    try {
+      const item = await imageFor(img.dataset.resource);
+      if (disposed || serial !== renderSerial) return;
+      img.loading = 'eager'; img.src = item.url; await img.decode();
+    } catch (error) { if (!disposed && serial === renderSerial) missingImage(img, error); }
+  }
+  if (serial === renderSerial) trimImages();
 }
 function fitPages() {
   const frames = [...host.children]; if (!frames.length) return;
@@ -220,17 +296,18 @@ function configure(next = {}) {
   const oldSpread = options.spread; options = { ...options, ...next };
   document.body.dataset.theme = ['white', 'sepia', 'dark'].includes(options.theme) ? options.theme : 'white';
   host.classList.toggle('rtl', !!options.rtl);
-  if (oldSpread !== options.spread) render(); else fitPages();
+  if (oldSpread !== options.spread) return render();
+  fitPages();
 }
-function display(position) {
+async function display(position) {
   if (!pages.length) return;
   const saved = /^docx:(\d+)$/.exec(String(position));
   page = clampPage(saved ? Number(saved[1]) : Number(position));
-  render(); reportLocation();
+  await render(); reportLocation();
 }
-function next() { display(page + (options.spread ? 2 : 1)); }
-function previous() { display(page - (options.spread ? 2 : 1)); }
-function progress(value) { display(Math.round(Math.max(0, Math.min(1, Number(value))) * (pages.length - 1))); }
+function next() { return display(page + (options.spread ? 2 : 1)); }
+function previous() { return display(page - (options.spread ? 2 : 1)); }
+function progress(value) { return display(Math.round(Math.max(0, Math.min(1, Number(value))) * (pages.length - 1))); }
 function highlightSelection() {
   const selection = window.getSelection();
   if (!selection?.rangeCount || selection.isCollapsed) return;
@@ -253,5 +330,5 @@ function destroy() {
 }
 const resizeObserver = new ResizeObserver(fitPages); resizeObserver.observe(host);
 window.freaderDocx = { beginDocument, appendChunk, openDocument, configure, display, next, previous, progress, highlightSelection, destroy,
-  getState: () => ({ ready, page, count: pages.length, received, spread: options.spread, awaitingPassword, unavailableImages }) };
+  getState: () => ({ ready, page, count: pages.length, received, spread: options.spread, awaitingPassword, unavailableImages, imageCacheBytes, cachedImages: imageCache.size, visibleImages: activeImagePaths.size, maxBytes: MAX_BYTES }) };
 window.addEventListener('pagehide', destroy, { once: true });

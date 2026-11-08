@@ -1,0 +1,21 @@
+{
+  "package": "emf-converter",
+  "version": "4.3.5",
+  "source": "https://github.com/ChristopherVR/emf-converter",
+  "npmIntegrity": "sha512-J6HwqfneqPIHVg1yXGrvP8IHSO4rwbtM+5uq6x3cq07SFt2skcmV+D+NDmGJhs6649ZfDgKAVpA1aHXU7yj71Q==",
+  "modifications": "dist/index.mjs renamed byte-identically to converter.js for Android MIME support.",
+  "artifacts": {
+    "converter.js": {
+      "bytes": 905471,
+      "sha256": "ff2860b56a4983ebbe1d7c5e2d5b1dc12e2041e67af3dd2d9075f968d07fbc2c"
+    },
+    "LICENSE": {
+      "bytes": 11363,
+      "sha256": "2c27550900d2cabf83527a04600ba8042e3ba89e70ec077ff220afa48c8230a7"
+    },
+    "package.json": {
+      "bytes": 1670,
+      "sha256": "0d2d3ea9199609ea3e4e412cc322fbcdb3d3a68dcfaeacffa48b545392037952"
+    }
+  }
+}
