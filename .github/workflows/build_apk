@@ -1,0 +1,557 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    env:
+      FREADER_GRADLE_VERSION: '8.12'
+      FREADER_GRADLE_SHA256: '7a00d51fb93147819aab76024feece20b6b84e420694101f276be952e08bef03'
+    steps:
+      - name: 1. Checkout Source
+        uses: actions/checkout@v4
+
+      - name: 2. Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.35.7'
+
+      - name: 4. Generate Android Platform Files & Configure FReader Store Release (com.freader.my_ebook_reader)
+        run: |
+          if [ ! -f "lib/screens/pdf_and_image_viewer.dart" ]; then
+            FOUND_PUBSPEC=$(find . -maxdepth 3 -name "pubspec.yaml" | grep -v "^\./pubspec\.yaml$" | head -n 1)
+            if [ -n "$FOUND_PUBSPEC" ]; then
+              SUBDIR=$(dirname "$FOUND_PUBSPEC")
+              echo "Found project inside subdirectory: $SUBDIR. Moving to root..."
+              cp -rf "$SUBDIR"/* .
+            fi
+          fi
+
+          if ! grep -q "BookshelfScreen" lib/main.dart; then
+            echo "ERROR: lib/main.dart에 BookshelfScreen이 없습니다! GitHub 저장소에 lib/ 폴더가 제대로 올라갔는지 확인해주세요."
+            exit 1
+          fi
+
+          rm -f sample_japanese_test_book.epub
+          mkdir -p /tmp/v7_backup
+          cp -rf lib /tmp/v7_backup/
+          cp -rf assets /tmp/v7_backup/
+          cp -f pubspec.yaml /tmp/v7_backup/
+          cp -rf android_override /tmp/v7_backup/
+
+          rm -rf android
+          flutter create . --project-name my_ebook_reader --org com.freader
+
+          rm -rf lib test
+          cp -rf /tmp/v7_backup/lib .
+          cp -rf /tmp/v7_backup/assets .
+          cp -f /tmp/v7_backup/pubspec.yaml .
+
+          mkdir -p android/app/src/main/kotlin/com/freader/my_ebook_reader
+          cp -f /tmp/v7_backup/android_override/MainActivity.kt android/app/src/main/kotlin/com/freader/my_ebook_reader/MainActivity.kt
+          sed -i 's/^package com\.example\.my_ebook_reader/package com.freader.my_ebook_reader/' android/app/src/main/kotlin/com/freader/my_ebook_reader/MainActivity.kt
+          rm -rf android/app/src/main/kotlin/com/example
+          rm -rf android/app/src/main/java/com/example
+
+          # 정식 릴리스 서명 키스토어(CN=FReader) 배치
+          if [ -f "/tmp/v7_backup/android_override/freader_release.keystore" ]; then
+            cp -f /tmp/v7_backup/android_override/freader_release.keystore android/app/freader_release.keystore
+          else
+            echo "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" | base64 -d > android/app/freader_release.keystore
+          fi
+
+          # 삼성 갤럭시 S펜 에어 액션(Air Actions) 공식 리모트 액션 XML 및 스트링 리소스 생성
+          mkdir -p android/app/src/main/res/xml
+          mkdir -p android/app/src/main/res/values
+          echo '<?xml version="1.0" encoding="utf-8"?>' > android/app/src/main/res/values/spen_strings.xml
+          echo '<resources>' >> android/app/src/main/res/values/spen_strings.xml
+          echo '    <string name="spen_next_page">다음 페이지</string>' >> android/app/src/main/res/values/spen_strings.xml
+          echo '    <string name="spen_prev_page">이전 페이지</string>' >> android/app/src/main/res/values/spen_strings.xml
+          echo '</resources>' >> android/app/src/main/res/values/spen_strings.xml
+
+          echo '<?xml version="1.0" encoding="utf-8"?>' > android/app/src/main/res/xml/remote_action.xml
+          echo '<remote-actions version="1.2">' >> android/app/src/main/res/xml/remote_action.xml
+          echo '    <action id="next_page" label="@string/spen_next_page" priority="1" trigger_key="PAGE_DOWN">' >> android/app/src/main/res/xml/remote_action.xml
+          echo '        <preference name="gesture" value="click"/>' >> android/app/src/main/res/xml/remote_action.xml
+          echo '    </action>' >> android/app/src/main/res/xml/remote_action.xml
+          echo '    <action id="prev_page" label="@string/spen_prev_page" priority="2" trigger_key="PAGE_UP">' >> android/app/src/main/res/xml/remote_action.xml
+          echo '        <preference name="gesture" value="double_click"/>' >> android/app/src/main/res/xml/remote_action.xml
+          echo '    </action>' >> android/app/src/main/res/xml/remote_action.xml
+          echo '</remote-actions>' >> android/app/src/main/res/xml/remote_action.xml
+
+          touch android/app/proguard-rules.pro
+
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/compileSdk .*/compileSdk 36/g' android/app/build.gradle
+            sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' android/app/build.gradle
+            sed -i 's/minSdkVersion .*/minSdkVersion 24/g' android/app/build.gradle
+            sed -i 's/minSdk = .*/minSdk = 24/g' android/app/build.gradle
+            sed -i 's/minSdk .*/minSdk 24/g' android/app/build.gradle
+            echo "" >> android/app/build.gradle
+            echo "android {" >> android/app/build.gradle
+            echo "    signingConfigs {" >> android/app/build.gradle
+            echo "        release {" >> android/app/build.gradle
+            echo "            storeFile file('freader_release.keystore')" >> android/app/build.gradle
+            echo "            storePassword 'freader2026!'" >> android/app/build.gradle
+            echo "            keyAlias 'freader_key'" >> android/app/build.gradle
+            echo "            keyPassword 'freader2026!'" >> android/app/build.gradle
+            echo "        }" >> android/app/build.gradle
+            echo "    }" >> android/app/build.gradle
+            echo "    buildTypes {" >> android/app/build.gradle
+            echo "        release {" >> android/app/build.gradle
+            echo "            signingConfig signingConfigs.release" >> android/app/build.gradle
+            echo "            minifyEnabled false" >> android/app/build.gradle
+            echo "            shrinkResources false" >> android/app/build.gradle
+            echo "            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'" >> android/app/build.gradle
+            echo "        }" >> android/app/build.gradle
+            echo "    }" >> android/app/build.gradle
+            echo "}" >> android/app/build.gradle
+          fi
+
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/compileSdk = .*/compileSdk = 36/g' android/app/build.gradle.kts
+            sed -i 's/minSdk = .*/minSdk = 24/g' android/app/build.gradle.kts
+            echo "" >> android/app/build.gradle.kts
+            echo 'android {' >> android/app/build.gradle.kts
+            echo '    signingConfigs {' >> android/app/build.gradle.kts
+            echo '        create("release") {' >> android/app/build.gradle.kts
+            echo '            storeFile = file("freader_release.keystore")' >> android/app/build.gradle.kts
+            echo '            storePassword = "freader2026!"' >> android/app/build.gradle.kts
+            echo '            keyAlias = "freader_key"' >> android/app/build.gradle.kts
+            echo '            keyPassword = "freader2026!"' >> android/app/build.gradle.kts
+            echo '        }' >> android/app/build.gradle.kts
+            echo '    }' >> android/app/build.gradle.kts
+            echo '    buildTypes {' >> android/app/build.gradle.kts
+            echo '        getByName("release") {' >> android/app/build.gradle.kts
+            echo '            signingConfig = signingConfigs.getByName("release")' >> android/app/build.gradle.kts
+            echo '            isMinifyEnabled = false' >> android/app/build.gradle.kts
+            echo '            isShrinkResources = false' >> android/app/build.gradle.kts
+            echo '            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")' >> android/app/build.gradle.kts
+            echo '        }' >> android/app/build.gradle.kts
+            echo '    }' >> android/app/build.gradle.kts
+            echo '}' >> android/app/build.gradle.kts
+          fi
+
+          if [ -f android/build.gradle ]; then
+            sed -i '/evaluationDependsOn/d' android/build.gradle
+            echo "" >> android/build.gradle
+            echo "subprojects {" >> android/build.gradle
+            echo "    afterEvaluate { project ->" >> android/build.gradle
+            echo '        if (project.hasProperty("android")) {' >> android/build.gradle
+            echo "            project.android { compileSdkVersion 36 }" >> android/build.gradle
+            echo "        }" >> android/build.gradle
+            echo "    }" >> android/build.gradle
+            echo "}" >> android/build.gradle
+            echo 'subprojects { project.evaluationDependsOn(":app") }' >> android/build.gradle
+          fi
+
+          if [ -f android/build.gradle.kts ]; then
+            sed -i '/evaluationDependsOn/d' android/build.gradle.kts
+            echo "" >> android/build.gradle.kts
+            echo "subprojects {" >> android/build.gradle.kts
+            echo "    afterEvaluate {" >> android/build.gradle.kts
+            echo '        if (extensions.findByName("android") != null) {' >> android/build.gradle.kts
+            echo '            extensions.configure<com.android.build.gradle.BaseExtension>("android") {' >> android/build.gradle.kts
+            echo "                compileSdkVersion(36)" >> android/build.gradle.kts
+            echo "            }" >> android/build.gradle.kts
+            echo "        }" >> android/build.gradle.kts
+            echo "    }" >> android/build.gradle.kts
+            echo "}" >> android/build.gradle.kts
+            echo 'subprojects { project.evaluationDependsOn(":app") }' >> android/build.gradle.kts
+          fi
+
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST" ]; then
+            # Flutter's template grants INTERNET to debug/profile only. WebView
+            # book requests need it in the RELEASE manifest too (no runtime dialog).
+            if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+              sed -i '/<application/i\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+            fi
+            if ! grep -q "com.samsung.android.support.REMOTE_ACTION" "$MANIFEST"; then
+              sed -i 's/<\/activity>/<property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true"\/><property android:name="android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE" android:value="false"\/><property android:name="android.window.PROPERTY_COMPAT_IGNORE_REQUESTED_ORIENTATION" android:value="false"\/><intent-filter><action android:name="com.samsung.android.support.REMOTE_ACTION"\/><\/intent-filter><meta-data android:name="com.samsung.android.support.REMOTE_ACTION" android:resource="@xml\/remote_action"\/><\/activity>/' "$MANIFEST"
+              sed -i 's/<\/application>/<property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true"\/><property android:name="android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE" android:value="false"\/><property android:name="android.window.PROPERTY_COMPAT_IGNORE_REQUESTED_ORIENTATION" android:value="false"\/><\/application>/' "$MANIFEST"
+            fi
+            sed -i 's/android:label="[^"]*"/android:label="FReader"/g' "$MANIFEST"
+          fi
+
+          for STYLE_FILE in android/app/src/main/res/values/styles.xml android/app/src/main/res/values-night/styles.xml; do
+            if [ -f "$STYLE_FILE" ]; then
+              if ! grep -q "android:windowFullscreen" "$STYLE_FILE"; then
+                sed -i 's/<\/style>/<item name="android:windowFullscreen">true<\/item><item name="android:windowLayoutInDisplayCutoutMode">shortEdges<\/item><\/style>/g' "$STYLE_FILE"
+              fi
+            fi
+          done
+
+      - name: 4a. Restore verified Gradle distribution cache
+        id: gradle-dist-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/freader-gradle-distributions
+          key: freader-gradle-bin-v1-${{ runner.os }}-${{ env.FREADER_GRADLE_VERSION }}-${{ env.FREADER_GRADLE_SHA256 }}
+
+      - name: 4b. Prepare Gradle with retries and checksum verification
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Pin the same Gradle version as Flutter 3.35.7. Only the distribution type
+          # changes: -bin contains everything needed to build, without sources/docs.
+          DIST_DIR="$RUNNER_TEMP/freader-gradle-distributions"
+          DIST_ZIP="$DIST_DIR/gradle-${FREADER_GRADLE_VERSION}-bin.zip"
+          export FREADER_GRADLE_ZIP="$DIST_ZIP"
+          mkdir -p "$DIST_DIR"
+
+          verify_gradle() {
+            [ -s "$1" ] && printf '%s  %s\n' "$FREADER_GRADLE_SHA256" "$1" | sha256sum --check --status
+          }
+
+          if ! verify_gradle "$DIST_ZIP"; then
+            rm -f "$DIST_ZIP" "$DIST_ZIP.part"
+            # Both official hosts can redirect to the same GitHub endpoint.
+            # The mirror is accepted ONLY when the pinned official SHA-256 matches.
+            for BASE_URL in https://downloads.gradle.org/distributions https://services.gradle.org/distributions https://mirrors.cloud.tencent.com/gradle; do
+              echo "Downloading Gradle ${FREADER_GRADLE_VERSION} from $BASE_URL"
+              if curl --fail --location --show-error --silent \
+                --retry 2 --retry-delay 5 --retry-all-errors --retry-max-time 180 \
+                --connect-timeout 20 --max-time 180 \
+                "$BASE_URL/gradle-${FREADER_GRADLE_VERSION}-bin.zip" \
+                --output "$DIST_ZIP.part"; then
+                if verify_gradle "$DIST_ZIP.part"; then
+                  mv "$DIST_ZIP.part" "$DIST_ZIP"
+                  break
+                fi
+                echo "::warning::Gradle download failed SHA-256 verification; trying the next endpoint."
+              fi
+              rm -f "$DIST_ZIP.part"
+            done
+          fi
+
+          if ! verify_gradle "$DIST_ZIP"; then
+            echo "::error::Gradle download failed after retries. No unverified archive will be used."
+            exit 1
+          fi
+
+          # Flutter recreates android/ earlier in this job, so patch the newly generated
+          # wrapper HERE. The wrapper now installs from a verified local file and cannot
+          # hit the GitHub redirect/504 during assembleRelease or bundleRelease.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          wrapper = Path('android/gradle/wrapper/gradle-wrapper.properties')
+          updates = {
+              'distributionUrl': Path(os.environ['FREADER_GRADLE_ZIP']).resolve().as_uri(),
+              'distributionSha256Sum': os.environ['FREADER_GRADLE_SHA256'],
+              'networkTimeout': '60000',
+          }
+          lines = [line for line in wrapper.read_text().splitlines()
+                   if line.split('=', 1)[0].strip() not in updates]
+          lines.extend(f'{key}={value}' for key, value in updates.items())
+          wrapper.write_text('\n'.join(lines) + '\n')
+          PY
+
+          # Detect installation problems before starting the much longer Flutter build.
+          (cd android && ./gradlew --version)
+
+      - name: 4c. Save verified Gradle distribution cache
+        if: steps.gradle-dist-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/freader-gradle-distributions
+          key: freader-gradle-bin-v1-${{ runner.os }}-${{ env.FREADER_GRADLE_VERSION }}-${{ env.FREADER_GRADLE_SHA256 }}
+
+      - name: 4d. Reuse verified Kotlin compiler from Gradle distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          export FREADER_KOTLIN_REPOSITORY="$RUNNER_TEMP/freader-kotlin-repository"
+
+          # Gradle 8.12 already bundles the EXACT Maven compiler jar that failed with 504.
+          # Reuse it; do not download it again from Central/Plugin Portal/GitHub.
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import zipfile
+          from pathlib import Path
+
+          version = os.environ['FREADER_GRADLE_VERSION']
+          archive = Path(os.environ['RUNNER_TEMP']) / 'freader-gradle-distributions' / f'gradle-{version}-bin.zip'
+          with archive.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          if digest != os.environ['FREADER_GRADLE_SHA256']:
+              raise SystemExit('Gradle distribution checksum mismatch; refusing to extract Kotlin.')
+
+          artifact = 'kotlin-compiler-embeddable-2.0.21'
+          with zipfile.ZipFile(archive) as dist:
+              compiler = dist.read(f'gradle-{version}/lib/{artifact}.jar')
+          expected = '9fa8cdd1de0dccffe154c997d423ec6b5f53cd6d9177e3a77a9b0de03fb1bc81'
+          if hashlib.sha256(compiler).hexdigest() != expected:
+              raise SystemExit('Bundled Kotlin compiler checksum mismatch.')
+
+          target = Path(os.environ['FREADER_KOTLIN_REPOSITORY']) / 'org/jetbrains/kotlin/kotlin-compiler-embeddable/2.0.21'
+          target.mkdir(parents=True, exist_ok=True)
+          (target / f'{artifact}.jar').write_bytes(compiler)
+          # Published Maven POM, including ALL original runtime dependencies/exclusions.
+          # Keeping it here avoids a network request even for this artifact's metadata.
+          (target / f'{artifact}.pom').write_text("""<?xml version="1.0" encoding="UTF-8"?>
+          <project xmlns="http://maven.apache.org/POM/4.0.0" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-compiler-embeddable</artifactId>
+            <version>2.0.21</version>
+            <name>Kotlin Compiler Embeddable</name>
+            <description>Kotlin Compiler (embeddable)</description>
+            <url>https://kotlinlang.org/</url>
+            <licenses>
+              <license>
+                <name>The Apache License, Version 2.0</name>
+                <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+              </license>
+            </licenses>
+            <developers>
+              <developer>
+                <name>Kotlin Team</name>
+                <organization>JetBrains</organization>
+                <organizationUrl>https://www.jetbrains.com</organizationUrl>
+              </developer>
+            </developers>
+            <scm>
+              <connection>scm:git:https://github.com/JetBrains/kotlin.git</connection>
+              <developerConnection>scm:git:https://github.com/JetBrains/kotlin.git</developerConnection>
+              <url>https://github.com/JetBrains/kotlin</url>
+            </scm>
+            <dependencies>
+              <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-stdlib</artifactId>
+                <version>2.0.21</version>
+                <scope>runtime</scope>
+              </dependency>
+              <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-script-runtime</artifactId>
+                <version>2.0.21</version>
+                <scope>runtime</scope>
+              </dependency>
+              <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-reflect</artifactId>
+                <version>1.6.10</version>
+                <scope>runtime</scope>
+                <exclusions>
+                  <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                  </exclusion>
+                </exclusions>
+              </dependency>
+              <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-daemon-embeddable</artifactId>
+                <version>2.0.21</version>
+                <scope>runtime</scope>
+              </dependency>
+              <dependency>
+                <groupId>org.jetbrains.intellij.deps</groupId>
+                <artifactId>trove4j</artifactId>
+                <version>1.0.20200330</version>
+                <scope>runtime</scope>
+              </dependency>
+              <dependency>
+                <groupId>org.jetbrains.kotlinx</groupId>
+                <artifactId>kotlinx-coroutines-core-jvm</artifactId>
+                <version>1.6.4</version>
+                <scope>runtime</scope>
+                <exclusions>
+                  <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                  </exclusion>
+                </exclusions>
+              </dependency>
+            </dependencies>
+          </project>
+          """, encoding='utf-8')
+          print(f'Prepared verified local Kotlin compiler 2.0.21 ({len(compiler)} bytes).')
+          PY
+
+          printf 'FREADER_KOTLIN_REPOSITORY=%s\n' "$FREADER_KOTLIN_REPOSITORY" >> "$GITHUB_ENV"
+          GRADLE_INIT_DIR="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
+          mkdir -p "$GRADLE_INIT_DIR"
+          cat > "$GRADLE_INIT_DIR/freader-repositories.gradle" <<'GRADLE'
+          import org.gradle.api.artifacts.repositories.MavenArtifactRepository
+          import org.gradle.api.initialization.resolve.RepositoriesMode
+
+          def localPath = System.getenv('FREADER_KOTLIN_REPOSITORY')
+          if (!localPath || !new File(localPath,
+                  'org/jetbrains/kotlin/kotlin-compiler-embeddable/2.0.21/kotlin-compiler-embeddable-2.0.21.jar').isFile()) {
+              throw new GradleException('The verified FReader Kotlin repository is missing. Run workflow step 4d first.')
+          }
+
+          def configureBundledCompiler = { repositories ->
+              repositories.maven {
+                  name = 'FReaderBundledKotlin'
+                  url = new File(localPath).toURI()
+                  content {
+                      includeVersion('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', '2.0.21')
+                  }
+                  metadataSources { mavenPom() }
+              }
+              repositories.withType(MavenArtifactRepository).configureEach { repository ->
+                  if (repository.name != 'FReaderBundledKotlin') {
+                      // Exclusion, not just ordering: even cached remote metadata must not
+                      // send this version back through the failing HTTP redirect chain.
+                      repository.content {
+                          excludeVersion('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', '2.0.21')
+                      }
+                  }
+              }
+          }
+
+          def configurePluginRepositories = { repositories ->
+              configureBundledCompiler(repositories)
+              repositories.mavenCentral()
+              repositories.google()
+              repositories.gradlePluginPortal()
+              repositories.withType(MavenArtifactRepository).configureEach { repository ->
+                  if (repository.url.host in ['plugins.gradle.org', 'plugins-artifacts.gradle.org']) {
+                      repository.content { excludeGroupByRegex('org[.]jetbrains([.].*)?') }
+                  }
+              }
+          }
+
+          // init.d applies to Flutter's INCLUDED Gradle build too. Editing only the app's
+          // settings.gradle.kts leaves the failing Flutter plugin classpath untouched.
+          gradle.beforeSettings { settings ->
+              configurePluginRepositories(settings.pluginManagement.repositories)
+              configureBundledCompiler(settings.dependencyResolutionManagement.repositories)
+          }
+
+          def projectRepositoriesAllowed = true
+          gradle.settingsEvaluated { settings ->
+              projectRepositoriesAllowed = settings.dependencyResolutionManagement.repositoriesMode.get() == RepositoriesMode.PREFER_PROJECT
+          }
+          gradle.beforeProject { project ->
+              configurePluginRepositories(project.buildscript.repositories)
+              // Flutter uses FAIL_ON_PROJECT_REPOS; its settings repository above handles
+              // compiler configurations. Normal Android projects use project repositories.
+              if (projectRepositoriesAllowed) {
+                  configureBundledCompiler(project.repositories)
+              }
+          }
+          GRADLE
+
+      - name: 4e. Verify local Kotlin resolution without network
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHECK_DIR="$RUNNER_TEMP/freader-kotlin-check"
+          mkdir -p "$CHECK_DIR/included"
+          cat > "$CHECK_DIR/settings.gradle" <<'GRADLE'
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { mavenCentral() }
+          }
+          rootProject.name = 'freader-kotlin-check'
+          includeBuild('included') { name = 'freader-kotlin-included' }
+          GRADLE
+          cat > "$CHECK_DIR/included/settings.gradle" <<'GRADLE'
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { mavenCentral() }
+          }
+          rootProject.name = 'freader-kotlin-included'
+          GRADLE
+          cat > "$CHECK_DIR/included/build.gradle" <<'GRADLE'
+          buildscript {
+              dependencies {
+                  // This preflight checks the previously failing jar itself. Production
+                  // resolution still uses the full published POM with its dependencies.
+                  classpath('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21') { transitive = false }
+              }
+          }
+          configurations { bundledCompiler }
+          dependencies {
+              bundledCompiler('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21') { transitive = false }
+          }
+          tasks.register('verifyBundledKotlin') {
+              doLast {
+                  def expected = new File(System.getenv('FREADER_KOTLIN_REPOSITORY'),
+                          'org/jetbrains/kotlin/kotlin-compiler-embeddable/2.0.21/kotlin-compiler-embeddable-2.0.21.jar').canonicalFile
+                  [buildscript.configurations.classpath, configurations.bundledCompiler].each { configuration ->
+                      def resolved = configuration.singleFile.canonicalFile
+                      if (resolved != expected) throw new GradleException('Kotlin did not resolve from the verified local repository: ' + resolved)
+                      def digest = java.security.MessageDigest.getInstance('SHA-256').digest(resolved.bytes).encodeHex().toString()
+                      if (digest != '9fa8cdd1de0dccffe154c997d423ec6b5f53cd6d9177e3a77a9b0de03fb1bc81') {
+                          throw new GradleException('Resolved Kotlin compiler checksum mismatch.')
+                      }
+                  }
+                  println('FREADER_LOCAL_KOTLIN_OK: ' + project.name)
+              }
+          }
+          GRADLE
+          cp "$CHECK_DIR/included/build.gradle" "$CHECK_DIR/build.gradle"
+          cat >> "$CHECK_DIR/build.gradle" <<'GRADLE'
+          tasks.named('verifyBundledKotlin') {
+              dependsOn gradle.includedBuild('freader-kotlin-included').task(':verifyBundledKotlin')
+          }
+          GRADLE
+          # Fail HERE with a clear message if the wiring ever regresses. No external
+          # repositories may be contacted by this check, including the included build.
+          "$GITHUB_WORKSPACE/android/gradlew" -p "$CHECK_DIR" --offline --no-daemon --console=plain verifyBundledKotlin
+
+      - name: 4f. Verify offline HWP engine and fonts
+        shell: bash
+        run: |
+          python3 - <<'PYVERIFY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path('assets/hwp')
+          provenance = json.loads((root / 'PROVENANCE.json').read_text())
+          assert provenance['version'] == '0.8.7'
+          for name, expected in provenance['artifacts'].items():
+              content = (root / name).read_bytes()
+              assert len(content) == expected['bytes'], f'Wrong HWP asset size: {name}'
+              assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong HWP asset checksum: {name}'
+          for name in ['index.html', 'reader.js', 'reader.css', 'fonts/NotoSansKR-Regular.woff2',
+                       'fonts/NotoSansKR-Bold.woff2', 'fonts/NotoSerifKR-Regular.woff2',
+                       'fonts/NotoSerifKR-Bold.woff2', 'fonts/LatinModernMath-Regular.woff2',
+                       'fonts/NotoSansKR-OFL.txt', 'fonts/NotoSerifKR-OFL.txt', 'fonts/GUST-FONT-LICENSE.txt']:
+              assert (root / name).is_file(), f'Missing offline HWP asset: {name}'
+          print('Verified pinned rhwp 0.8.7, local fonts and license notices.')
+          PYVERIFY
+
+      - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
+        run: |
+          BUILD_NUM=$((121 + ${{ github.run_number }}))
+          flutter pub get
+          flutter build apk --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM
+          flutter build appbundle --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM
+
+      - name: 6. Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FReader-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: 7. Upload Google Play Store AAB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FReader-google-play-aab
+          path: build/app/outputs/bundle/release/app-release.aab
