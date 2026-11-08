@@ -1,0 +1,27 @@
+FReader HWP/HWPX reader
+
+The FReader host files (index.html, reader.css and reader.js) adapt the original
+FReader reading UI to the unmodified rhwp document engine. Documents are opened
+read-only. No document is uploaded for conversion or rendering.
+
+rhwp 0.8.7
+Source: https://github.com/edwardkim/rhwp
+Commit: 1a76570e833917d15817415a53c09ad61ab3203f
+The engine distribution was supplied in HOP 0.4.5 (hop-main.zip).
+License: MIT, included in LICENSE. Original artifact hashes: PROVENANCE.json.
+
+HOP 0.4.5
+Source: https://github.com/golbin/hop
+License: MIT, included in HOP-LICENSE.
+
+Bundled fonts are copied without modification from the supplied HOP distribution:
+- Noto Sans KR Regular/Bold: SIL Open Font License 1.1;
+  fonts/NotoSansKR-OFL.txt; https://github.com/google/fonts/tree/main/ofl/notosanskr
+- Noto Serif KR Regular/Bold: SIL Open Font License 1.1;
+  fonts/NotoSerifKR-OFL.txt; https://github.com/google/fonts/tree/main/ofl/notoserifkr
+- Latin Modern Math Regular: GUST Font License;
+  fonts/GUST-FONT-LICENSE.txt; https://www.gust.org.pl/projects/e-foundry/lm-math
+
+Unavailable document fonts are substituted with these bundled fonts. This can
+change text appearance. Proprietary Hancom and Microsoft font files are not
+included. The original document is never rewritten.
