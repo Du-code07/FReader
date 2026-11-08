@@ -3,7 +3,7 @@ import { Odr } from './engine/index.js';
 let document, session = 0, resourcePaths = new Set();
 const engine = (async () => {
   const response = await fetch('./engine/odr-core.wasm');
-  if (!response.ok) throw new Error('DOCX 엔진 파일을 읽지 못했습니다.');
+  if (!response.ok) throw new Error('Word 문서 엔진 파일을 읽지 못했습니다.');
   const odr = await Odr.load({ wasmBinary: new Uint8Array(await response.arrayBuffer()) });
   postMessage({ type: 'ready', version: '7.7.0' });
   return odr;
@@ -13,7 +13,7 @@ function closeDocument() {
   resourcePaths.clear();
   if (document) { document.close(); document = null; }
 }
-async function perform({ action, bytes, password, path, session: requestedSession }) {
+async function perform({ action, bytes, password, path, session: requestedSession, format }) {
   const odr = await engine;
   if (action === 'resource') {
     if (!document || requestedSession !== session || !resourcePaths.has(path)) throw new Error('문서 이미지 요청이 만료되었습니다.');
@@ -31,7 +31,7 @@ async function perform({ action, bytes, password, path, session: requestedSessio
     closeDocument(); session++;
     try {
       document = odr.open(bytes, {
-        name: 'document.docx', embedImages: false, allowExternalContent: false,
+        name: format === 'doc' ? 'document.doc' : 'document.docx', embedImages: false, allowExternalContent: false,
         editable: false, lazyLayout: false, textDocumentMargin: true,
         viewportMode: odr.enums.HtmlViewportMode.none,
         keyboardNavigation: false, keyboardShortcuts: false,
@@ -39,7 +39,7 @@ async function perform({ action, bytes, password, path, session: requestedSessio
     } finally { bytes.fill(0); }
   }
   if (action === 'close') { closeDocument(); session++; return { type: 'closed' }; }
-  if (!document) throw new Error('DOCX 문서가 열려 있지 않습니다.');
+  if (!document) throw new Error('Word 문서가 열려 있지 않습니다.');
   if (document.isPasswordEncrypted()) {
     if (password == null) return { type: 'password', incorrect: false };
     try { document.decrypt(password); }
@@ -48,14 +48,15 @@ async function perform({ action, bytes, password, path, session: requestedSessio
       throw error;
     } finally { password = null; }
   }
-  if (document.fileType !== odr.enums.FileType.docx) throw new Error('파일 내용이 DOCX 문서 형식과 일치하지 않습니다.');
+  const actualType = document.fileType;
+  if (![odr.enums.FileType.doc, odr.enums.FileType.docx].includes(actualType)) throw new Error('파일 내용이 Word(DOC/DOCX) 문서 형식과 일치하지 않습니다.');
   const result = document.render(0);
   // Images no longer count against this text-only safety budget.
   if (result.html.length > 64 * 1024 * 1024) throw new Error('문서의 본문 구조가 너무 큽니다. 문서를 나누어 열어 주세요.');
   const resources = [...new Map(result.externalResources.map(r => [r.path, r])).values()];
   resourcePaths = new Set(resources.map(r => r.path));
   // Keep the parser alive for on-demand image reads; close it on replacement/exit.
-  return { type: 'rendered', html: result.html, resources, session };
+  return { type: 'rendered', html: result.html, resources, session, format: actualType === odr.enums.FileType.doc ? 'doc' : 'docx' };
 }
 let queue = Promise.resolve();
 self.onmessage = ({ data }) => {

@@ -84,9 +84,11 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final EpubController _epubController = EpubController();
   final HwpReaderController _hwpController = HwpReaderController();
-  bool get _isOfflineDocument => RegExp(r'\.(hwp|hwpx|docx)$', caseSensitive: false).hasMatch(widget.filePath);
+  bool get _isOfflineDocument => RegExp(r'\.(hwp|hwpx|docx|doc)$', caseSensitive: false).hasMatch(widget.filePath);
   bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
-  String get _documentPositionPrefix => _isDocx ? 'docx' : 'hwp';
+  String get _documentPositionPrefix => _isDocx
+      ? 'docx'
+      : widget.filePath.toLowerCase().endsWith('.doc') ? 'doc' : 'hwp';
   int _hwpPage = 0;
   int _hwpPageCount = 0;
   int _hwpRelocation = 0;
@@ -383,7 +385,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       'docx', 'doc', 'hwpx', 'hwp'
     ];
     const imageExts = ['jpg', 'jpeg', 'png', 'webp'];
-    const docConvertExts = ['txt', 'doc'];
+    const docConvertExts = ['txt'];
 
     final allFiles = <File>[];
     for (final e in dir.listSync()) {
@@ -437,7 +439,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       ),
     );
 
-    if (nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx') {
+    if (nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx' || nextExt == 'doc') {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -523,7 +525,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       // Its CFI and annotations remain stored under the old file; never treat an
       // EPUB location as a HWP physical page or overwrite the old metadata.
       final legacyPath = widget.filePath.replaceFirst(
-        RegExp(r'\.(hwp|hwpx|docx)$', caseSensitive: false), '_v25_converted.epub');
+        RegExp(r'\.(hwp|hwpx|docx|doc)$', caseSensitive: false), '_v25_converted.epub');
       savedProg = await StorageService.getProgress(legacyPath);
     }
     final twoPage = await StorageService.getTwoPageLandscape();

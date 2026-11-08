@@ -8,7 +8,8 @@ const imageCache = new Map(), imageJobs = new Map(), brokenImages = new Set();
 let resourceIndex = new Map(), originalSources = new Set(), resourceSession = 0;
 let imageCacheBytes = 0, activeImagePaths = new Set(), renderSerial = 0;
 let ready = false, requestId = 0, generation = 0, awaitingPassword = false, unavailableImages = 0;
-let options = { theme: 'white', spread: false, rtl: false, position: null, progress: 0 };
+let detectedFormat = 'docx';
+let options = { format: 'docx', theme: 'white', spread: false, rtl: false, position: null, progress: 0 };
 const requests = new Map(), fonts = new Map();
 let pendingEvents = [], flushing = false;
 
@@ -35,7 +36,7 @@ worker.onmessage = ({ data }) => {
   else if (data.type === 'ready') { ready = true; emit('ready', { version: data.version }); }
   else if (data.type === 'error') fail(data.message);
 };
-worker.onerror = event => fail(event.message || 'DOCX 엔진을 시작하지 못했습니다.');
+worker.onerror = event => fail(event.message || 'Word 문서 엔진을 시작하지 못했습니다.');
 function request(action, data = {}, transfer = []) {
   return new Promise(resolve => {
     const id = ++requestId; requests.set(id, resolve);
@@ -72,18 +73,19 @@ async function openDocument(password = null) {
     else {
       if (!incoming || received !== incoming.length) throw new Error('문서 데이터를 모두 받지 못했습니다.');
       const bytes = incoming; incoming = null; received = 0;
-      result = await request('open', { bytes, password }, [bytes.buffer]);
+      result = await request('open', { bytes, password, format: options.format }, [bytes.buffer]);
     }
     password = null;
     if (disposed || current !== generation) return false;
     if (result.type === 'password') { awaitingPassword = true; emit('password', { incorrect: result.incorrect }); return false; }
     awaitingPassword = false;
     if (result.type === 'error') return fail(result.message);
+    detectedFormat = result.format || 'docx';
     resourceSession = result.session;
     resourceIndex = new Map((result.resources || []).map(r => [r.path, r]));
     await preparePages(result.html, current);
     if (disposed || current !== generation) return false;
-    const saved = /^docx:(\d+)$/.exec(options.position || '');
+    const saved = /^(?:docx|doc):(\d+)$/.exec(options.position || '');
     page = clampPage(saved ? Number(saved[1]) : Math.round(Number(options.progress || 0) * (pages.length - 1)));
     await render(); emit('loaded', { pageCount: pages.length, unavailableImages }); reportLocation();
     return true;
@@ -158,7 +160,7 @@ async function preparePages(html, current) {
   sanitize(parsed);
   applyPageBreaks(parsed);
   const sources = [...parsed.querySelectorAll('.odr-pages > .odr-page-outer')];
-  if (!sources.length) throw new Error('DOCX 문서에서 표시할 본문을 찾지 못했습니다.');
+  if (!sources.length) throw new Error('Word 문서에서 표시할 본문을 찾지 못했습니다.');
   for (const style of parsed.head.querySelectorAll('style')) {
     const copy = document.createElement('style'); copy.dataset.document = '';
     copy.textContent = style.textContent; document.head.insertBefore(copy, document.querySelector('link'));
@@ -168,6 +170,12 @@ async function preparePages(html, current) {
   for (const source of sources) {
     source.style.height = source.style.minHeight || '297mm';
     source.style.width ||= '210mm';
+    if (detectedFormat === 'doc') {
+      // The legacy parser has no paper/margin information. Use a readable
+      // fallback while preserving its paragraphs and explicit page breaks.
+      const inner = source.querySelector(':scope > .odr-page-inner');
+      if (inner && !inner.style.margin) inner.style.margin = '20mm';
+    }
     measure.appendChild(document.importNode(source, true));
   }
   originalSources = new Set(measure.children);
@@ -190,10 +198,10 @@ async function preparePages(html, current) {
   const result = [];
   for (const source of measure.children) {
     const inner = source.querySelector(':scope > .odr-page-inner');
-    if (!inner) throw new Error('DOCX 본문 구조가 올바르지 않습니다.');
+    if (!inner) throw new Error('Word 문서 본문 구조가 올바르지 않습니다.');
     const bounds = source.getBoundingClientRect(), css = getComputedStyle(inner);
     const width = bounds.width, height = bounds.height;
-    if (!(width > 0 && height > 0 && width < 20000 && height < 20000)) throw new Error('DOCX 페이지 크기가 올바르지 않습니다.');
+    if (!(width > 0 && height > 0 && width < 20000 && height < 20000)) throw new Error('Word 문서 페이지 크기가 올바르지 않습니다.');
     const margin = ['Top', 'Right', 'Bottom', 'Left'].map(side => parseFloat(css['margin' + side]) || 0);
     const bodyWidth = Math.max(32, width - margin[1] - margin[3]);
     const bodyHeight = Math.max(32, height - margin[0] - margin[2]);
@@ -203,13 +211,13 @@ async function preparePages(html, current) {
     inner.classList.add('freader-columns');
     Object.assign(inner.style, { width: `${bodyWidth}px`, height: `${bodyHeight}px`, columnWidth: `${bodyWidth}px` });
     const columns = Math.max(1, Math.ceil((inner.scrollWidth - 1) / bodyWidth));
-    if (result.length + columns > 10000) throw new Error('표시할 DOCX 페이지 수가 너무 많습니다.');
+    if (result.length + columns > 10000) throw new Error('표시할 Word 문서 페이지 수가 너무 많습니다.');
     for (let column = 0; column < columns; column++) result.push({ source, column, width, height, bodyWidth });
   }
   pages = result;
 }
 function clampPage(value) { return Math.max(0, Math.min(pages.length - 1, Number.isFinite(value) ? Math.trunc(value) : 0)); }
-function reportLocation() { emit('location', { page, pageCount: pages.length, position: `docx:${page}`, progress: pages.length > 1 ? page / (pages.length - 1) : 1 }); }
+function reportLocation() { emit('location', { page, pageCount: pages.length, position: `${options.format === 'doc' ? 'doc' : 'docx'}:${page}`, progress: pages.length > 1 ? page / (pages.length - 1) : 1 }); }
 function trimImages() {
   for (const [path, item] of imageCache) {
     if (imageCacheBytes <= IMAGE_CACHE_BYTES && imageCache.size <= 24) break;
@@ -301,7 +309,7 @@ function configure(next = {}) {
 }
 async function display(position) {
   if (!pages.length) return;
-  const saved = /^docx:(\d+)$/.exec(String(position));
+  const saved = /^(?:docx|doc):(\d+)$/.exec(String(position));
   page = clampPage(saved ? Number(saved[1]) : Number(position));
   await render(); reportLocation();
 }
@@ -330,5 +338,5 @@ function destroy() {
 }
 const resizeObserver = new ResizeObserver(fitPages); resizeObserver.observe(host);
 window.freaderDocx = { beginDocument, appendChunk, openDocument, configure, display, next, previous, progress, highlightSelection, destroy,
-  getState: () => ({ ready, page, count: pages.length, received, spread: options.spread, awaitingPassword, unavailableImages, imageCacheBytes, cachedImages: imageCache.size, visibleImages: activeImagePaths.size, maxBytes: MAX_BYTES }) };
+  getState: () => ({ ready, page, count: pages.length, received, spread: options.spread, awaitingPassword, unavailableImages, imageCacheBytes, cachedImages: imageCache.size, visibleImages: activeImagePaths.size, maxBytes: MAX_BYTES, format: detectedFormat }) };
 window.addEventListener('pagehide', destroy, { once: true });

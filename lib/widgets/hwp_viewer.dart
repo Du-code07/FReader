@@ -54,10 +54,12 @@ class HwpViewer extends StatefulWidget {
 class _HwpViewerState extends State<HwpViewer> {
   static const _origin = 'https://appassets.androidplatform.net';
   bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
-  String get _format => _isDocx ? 'DOCX' : 'HWP';
+  bool get _isDoc => widget.filePath.toLowerCase().endsWith('.doc');
+  bool get _isWord => _isDocx || _isDoc;
+  String get _format => _isDocx ? 'DOCX' : _isDoc ? 'DOC' : 'HWP';
   String get _entry =>
-      '$_origin/assets/flutter_assets/assets/${_isDocx ? 'docx' : 'hwp'}/index.html';
-  String get _jsObject => _isDocx ? 'freaderDocx' : 'freaderHwp';
+      '$_origin/assets/flutter_assets/assets/${_isWord ? 'docx' : 'hwp'}/index.html';
+  String get _jsObject => _isWord ? 'freaderDocx' : 'freaderHwp';
   List<Map<String, Object>> _pageBreaks = [];
   static const _maxBytes = 256 * 1024 * 1024;
   static const _chunkBytes = 192 * 1024;
@@ -77,6 +79,7 @@ class _HwpViewerState extends State<HwpViewer> {
     'rtl': widget.rtl,
     'position': widget.initialPosition,
     'progress': widget.initialProgress,
+    if (_isWord) 'format': _isDoc ? 'doc' : 'docx',
     if (_isDocx) 'pageBreaks': _pageBreaks,
   };
 
