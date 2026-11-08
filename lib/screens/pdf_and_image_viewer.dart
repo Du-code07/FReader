@@ -414,7 +414,7 @@ class _UniversalMediaReaderScreenState extends State<UniversalMediaReaderScreen>
       'docx', 'doc', 'hwpx', 'hwp'
     ];
     const imageExts = ['jpg', 'jpeg', 'png', 'webp'];
-    const docConvertExts = ['txt', 'docx', 'doc'];
+    const docConvertExts = ['txt', 'doc'];
 
     final allFiles = <File>[];
     for (final e in dir.listSync()) {
@@ -478,7 +478,7 @@ class _UniversalMediaReaderScreenState extends State<UniversalMediaReaderScreen>
       ),
     );
 
-    if (nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx') {
+    if (nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx') {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(

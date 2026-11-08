@@ -84,7 +84,9 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final EpubController _epubController = EpubController();
   final HwpReaderController _hwpController = HwpReaderController();
-  bool get _isHwp => RegExp(r'\.(hwp|hwpx)$', caseSensitive: false).hasMatch(widget.filePath);
+  bool get _isOfflineDocument => RegExp(r'\.(hwp|hwpx|docx)$', caseSensitive: false).hasMatch(widget.filePath);
+  bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
+  String get _documentPositionPrefix => _isDocx ? 'docx' : 'hwp';
   int _hwpPage = 0;
   int _hwpPageCount = 0;
   int _hwpRelocation = 0;
@@ -142,7 +144,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     _loadWatchdog?.cancel();
     // A saved CFI from an older conversion can point at a removed chapter.
     // Retry once from the beginning without deleting bookmarks or memos.
-    if (!_isHwp && _readerAttempt == 0 && ((_currentCfi ?? _initialCfi)?.isNotEmpty ?? false)) {
+    if (!_isOfflineDocument && _readerAttempt == 0 && ((_currentCfi ?? _initialCfi)?.isNotEmpty ?? false)) {
       setState(() {
         _readerAttempt++;
         _initialCfi = null;
@@ -300,7 +302,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   void initState() {
     super.initState();
     _activeFilePath = widget.filePath;
-    if (!_isHwp) _epubSource = EpubSource.fromFile(File(_activeFilePath));
+    if (!_isOfflineDocument) _epubSource = EpubSource.fromFile(File(_activeFilePath));
     WidgetsBinding.instance.addObserver(this);
     _initReader().catchError((Object error) { _handleReaderLoadError(error); });
   }
@@ -381,7 +383,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       'docx', 'doc', 'hwpx', 'hwp'
     ];
     const imageExts = ['jpg', 'jpeg', 'png', 'webp'];
-    const docConvertExts = ['txt', 'docx', 'doc'];
+    const docConvertExts = ['txt', 'doc'];
 
     final allFiles = <File>[];
     for (final e in dir.listSync()) {
@@ -435,7 +437,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       ),
     );
 
-    if (nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx') {
+    if (nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx') {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -512,16 +514,16 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   }
 
   Future<void> _initReader() async {
-    if (!_isHwp) await TxtToEpubConverter.validateEpub(File(_activeFilePath));
+    if (!_isOfflineDocument) await TxtToEpubConverter.validateEpub(File(_activeFilePath));
     final savedCfi = await StorageService.getLastPosition(widget.filePath);
     final prevCfi = await StorageService.getPreviousPosition(widget.filePath);
     var savedProg = await StorageService.getProgress(widget.filePath);
-    if (_isHwp && savedCfi == null) {
+    if (_isOfflineDocument && savedCfi == null) {
       // Preserve approximate reading progress from the previous EPUB conversion.
       // Its CFI and annotations remain stored under the old file; never treat an
       // EPUB location as a HWP physical page or overwrite the old metadata.
       final legacyPath = widget.filePath.replaceFirst(
-        RegExp(r'\.(hwp|hwpx)$', caseSensitive: false), '_v25_converted.epub');
+        RegExp(r'\.(hwp|hwpx|docx)$', caseSensitive: false), '_v25_converted.epub');
       savedProg = await StorageService.getProgress(legacyPath);
     }
     final twoPage = await StorageService.getTwoPageLandscape();
@@ -572,23 +574,23 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   }
 
   void _readerNext() {
-    if (_isHwp) { _hwpController.next(); } else { _epubController.next(); }
+    if (_isOfflineDocument) { _hwpController.next(); } else { _epubController.next(); }
   }
 
   void _readerPrevious() {
-    if (_isHwp) { _hwpController.previous(); } else { _epubController.prev(); }
+    if (_isOfflineDocument) { _hwpController.previous(); } else { _epubController.prev(); }
   }
 
   void _readerProgress(double value) {
-    if (_isHwp) { _hwpController.toProgress(value); } else { _epubController.toProgressPercentage(value); }
+    if (_isOfflineDocument) { _hwpController.toProgress(value); } else { _epubController.toProgressPercentage(value); }
   }
 
   void _readerDisplay(String position) {
-    if (_isHwp) { _hwpController.display(position); } else { _epubController.display(cfi: position); }
+    if (_isOfflineDocument) { _hwpController.display(position); } else { _epubController.display(cfi: position); }
   }
 
   Widget _buildHwpViewer(bool isLandscape) => HwpViewer(
-    key: ValueKey('hwp:${widget.filePath}'),
+    key: ValueKey('document:${widget.filePath}'),
     filePath: widget.filePath,
     controller: _hwpController,
     initialPosition: _currentCfi ?? _initialCfi,
@@ -603,7 +605,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
         _hwpPageCount = pageCount;
         _chapters = List.generate(pageCount, (index) => EpubChapter(
           title: _tr('${index + 1}쪽', 'Page ${index + 1}', '第${index + 1}页', '${index + 1}ページ'),
-          href: 'hwp:$index', id: 'hwp:$index', subitems: const [],
+          href: '$_documentPositionPrefix:$index', id: '$_documentPositionPrefix:$index', subitems: const [],
         ));
       });
     },
@@ -1240,7 +1242,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
 
   void _handlePointerDown(PointerDownEvent event) {
     if (_isTouchLocked) return;
-    if (_isHwp) {
+    if (_isOfflineDocument) {
       _activeTouchPointerIds.add(event.pointer);
       if (_activeTouchPointerIds.length > 1) _hwpMultiTouch = true;
     }
@@ -1257,7 +1259,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   }
 
   void _handlePointerUp(PointerUpEvent event, Size screenSize) {
-    if (_isHwp) {
+    if (_isOfflineDocument) {
       _activeTouchPointerIds.remove(event.pointer);
       if (_hwpMultiTouch) {
         if (_activeTouchPointerIds.isEmpty) _hwpMultiTouch = false;
@@ -1281,7 +1283,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     final distance = (event.position - _pointerDownPosition!).distance;
     final duration = DateTime.now().difference(_pointerDownTime!).inMilliseconds;
 
-    if (_isHwp && _useSwipeTurn && _epubZoomScale <= 1.03 && duration < 1200) {
+    if (_isOfflineDocument && _useSwipeTurn && _epubZoomScale <= 1.03 && duration < 1200) {
       final delta = event.position - _pointerDownPosition!;
       if (delta.dx.abs() > 60 && delta.dx.abs() > delta.dy.abs() * 1.5) {
         if (delta.dx < 0) { _turnNext(); } else { _turnPrev(); }
@@ -1351,14 +1353,14 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       _epubBgTheme = mode;
     });
     try {
-      if (!_isHwp) _epubController.updateTheme(theme: _buildTheme());
+      if (!_isOfflineDocument) _epubController.updateTheme(theme: _buildTheme());
     } catch (_) {}
   }
 
   void _changeFontSize(int delta) {
     setState(() => _fontSize = (_fontSize + delta).clamp(12, 32).toInt());
-    if (_isHwp) {
-      // Fixed-layout HWP pages scale as a whole; changing paragraph font sizes
+    if (_isOfflineDocument) {
+      // Fixed-layout document pages scale as a whole; changing paragraph font sizes
       // would destroy the original tables and pagination.
       final scale = (_fontSize / 18).clamp(1.0, 4.5).toDouble();
       _epubZoomController.value = Matrix4.identity()..scale(scale);
@@ -1374,8 +1376,8 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
         ? (_footerInfoMode == 'page' || _footerInfoMode == 'both' || _footerInfoMode == 'none')
         : (_footerInfoMode == 'page' || _footerInfoMode == 'both');
     if (_isTouchLocked || !allowed) return;
-    final int totalEstPages = _isHwp ? math.max(1, _hwpPageCount) : (_chapters.isNotEmpty ? _chapters.length * 10 : 100);
-    final int curEstPage = _isHwp ? (_hwpPage + 1).clamp(1, totalEstPages).toInt() : ((_progress * totalEstPages).round()).clamp(1, totalEstPages).toInt();
+    final int totalEstPages = _isOfflineDocument ? math.max(1, _hwpPageCount) : (_chapters.isNotEmpty ? _chapters.length * 10 : 100);
+    final int curEstPage = _isOfflineDocument ? (_hwpPage + 1).clamp(1, totalEstPages).toInt() : ((_progress * totalEstPages).round()).clamp(1, totalEstPages).toInt();
     final ctrl = TextEditingController(text: '$curEstPage');
     ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
 
@@ -1424,7 +1426,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       final int clamped = targetPageOneBased.clamp(1, totalEstPages).toInt();
       final double targetProg = totalEstPages <= 1
           ? 0.0
-          : ((clamped - 1) / (_isHwp ? totalEstPages - 1 : totalEstPages)).clamp(0.0, 1.0).toDouble();
+          : ((clamped - 1) / (_isOfflineDocument ? totalEstPages - 1 : totalEstPages)).clamp(0.0, 1.0).toDouble();
       if (_currentCfi != null) {
         setState(() => _previousJumpCfi = _currentCfi);
       }
@@ -1438,8 +1440,8 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
 
   String _formatEpubFooterText() {
     if (_footerInfoMode == 'none') return '';
-    final int totalEstPages = _isHwp ? math.max(1, _hwpPageCount) : (_chapters.isNotEmpty ? _chapters.length * 10 : 100);
-    final int curEstPage = _isHwp ? (_hwpPage + 1).clamp(1, totalEstPages).toInt() : ((_progress * totalEstPages).round()).clamp(1, totalEstPages).toInt();
+    final int totalEstPages = _isOfflineDocument ? math.max(1, _hwpPageCount) : (_chapters.isNotEmpty ? _chapters.length * 10 : 100);
+    final int curEstPage = _isOfflineDocument ? (_hwpPage + 1).clamp(1, totalEstPages).toInt() : ((_progress * totalEstPages).round()).clamp(1, totalEstPages).toInt();
     final String progStr = '${(_progress * 100).toStringAsFixed(1)}%';
     final String pageStr = '$curEstPage / $totalEstPages';
 
@@ -1681,7 +1683,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
         (isLandscape && _enableTwoPageInLandscape) ? EpubSpread.always : EpubSpread.none;
 
     final viewerKey = '${_activeFilePath}_${spreadSetting}_${_epubBgTheme}_$_readerAttempt';
-    if (!_isHwp) _watchReaderLoad(viewerKey);
+    if (!_isOfflineDocument) _watchReaderLoad(viewerKey);
     final bgColor = _getBgColor();
     final footerTextColor = _epubBgTheme == 'dark' ? Colors.white54 : Colors.black54;
     final footerText = _formatEpubFooterText();
@@ -1745,7 +1747,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
                     onPointerDown: _handlePointerDown,
                     onPointerUp: (event) => _handlePointerUp(event, screenSize),
                     onPointerCancel: (event) {
-                      if (_isHwp) {
+                      if (_isOfflineDocument) {
                         _activeTouchPointerIds.remove(event.pointer);
                         if (_activeTouchPointerIds.isEmpty) _hwpMultiTouch = false;
                         _pointerDownPosition = null;
@@ -1781,7 +1783,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
                         onHorizontalDragUpdate: !_useSwipeTurn ? (_) {} : null,
-                        child: _isHwp ? _buildHwpViewer(isLandscape) : EpubViewer(
+                        child: _isOfflineDocument ? _buildHwpViewer(isLandscape) : EpubViewer(
                           key: ValueKey(viewerKey),
                           epubController: _epubController,
                     epubSource: _epubSource,

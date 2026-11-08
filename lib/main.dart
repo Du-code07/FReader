@@ -537,7 +537,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     'docx', 'doc', 'hwpx', 'hwp'
   ];
   static const _imageExts = ['jpg', 'jpeg', 'png', 'webp'];
-  static const _docConvertExts = ['txt', 'docx', 'doc'];
+  static const _docConvertExts = ['txt', 'doc'];
 
   String? _findFileRowPathAtGlobalPos(Offset globalPos) {
     for (final entry in _fileRowKeys.entries) {
@@ -1707,7 +1707,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     final displayName = _formatDisplayFileName(rawName);
     final ext = rawName.split('.').last.toLowerCase();
 
-    if (ext == 'epub' || ext == 'hwp' || ext == 'hwpx') {
+    if (ext == 'epub' || ext == 'hwp' || ext == 'hwpx' || ext == 'docx') {
       await Navigator.push(
         context,
         MaterialPageRoute(

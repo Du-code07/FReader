@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import '../services/docx_layout_hints.dart';
 
 /// Navigation adapter; the surrounding ReaderScreen owns the existing UI.
 class HwpReaderController {
@@ -51,7 +53,12 @@ class HwpViewer extends StatefulWidget {
 
 class _HwpViewerState extends State<HwpViewer> {
   static const _origin = 'https://appassets.androidplatform.net';
-  static const _entry = '$_origin/assets/flutter_assets/assets/hwp/index.html';
+  bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
+  String get _format => _isDocx ? 'DOCX' : 'HWP';
+  String get _entry =>
+      '$_origin/assets/flutter_assets/assets/${_isDocx ? 'docx' : 'hwp'}/index.html';
+  String get _jsObject => _isDocx ? 'freaderDocx' : 'freaderHwp';
+  List<Map<String, Object>> _pageBreaks = [];
   static const _maxBytes = 128 * 1024 * 1024;
   static const _chunkBytes = 192 * 1024;
   InAppWebViewController? _web;
@@ -70,6 +77,7 @@ class _HwpViewerState extends State<HwpViewer> {
     'rtl': widget.rtl,
     'position': widget.initialPosition,
     'progress': widget.initialProgress,
+    if (_isDocx) 'pageBreaks': _pageBreaks,
   };
 
   @override
@@ -83,7 +91,7 @@ class _HwpViewerState extends State<HwpViewer> {
     _timeout?.cancel();
     _timeout = Timer(const Duration(seconds: 120), () {
       _reportError(
-        'HWP 문서 표시 시간이 초과되었습니다. Android System WebView와 파일 상태를 확인해 주세요.',
+        '$_format 문서 표시 시간이 초과되었습니다. Android System WebView와 파일 상태를 확인해 주세요.',
       );
     });
   }
@@ -112,8 +120,8 @@ class _HwpViewerState extends State<HwpViewer> {
     if (_disposed || _failed || _web == null) return;
     try {
       final result = await _web!.callAsyncJavaScript(
-        functionBody: 'return await window.freaderHwp[method](...args);',
-        arguments: {'method': method, 'args': args},
+        functionBody: 'return await window[viewer][method](...args);',
+        arguments: {'viewer': _jsObject, 'method': method, 'args': args},
       );
       if (result?.error != null) throw StateError(result!.error!);
     } catch (error) {
@@ -136,6 +144,10 @@ class _HwpViewerState extends State<HwpViewer> {
       final length = await source.length();
       if (length < 1 || length > _maxBytes) {
         throw const FormatException('비어 있거나 128MB를 초과하는 문서입니다.');
+      }
+      if (_isDocx) {
+        final path = widget.filePath;
+        _pageBreaks = await Isolate.run(() => DocxLayoutHints.read(path));
       }
       if (_disposed || !mounted) return;
       await _invoke('beginDocument', [length, _options]);
@@ -194,7 +206,7 @@ class _HwpViewerState extends State<HwpViewer> {
         unawaited(_requestPassword(event['incorrect'] == true));
         break;
       case 'error':
-        _reportError(event['message'] ?? 'HWP 문서를 표시하지 못했습니다.');
+        _reportError(event['message'] ?? '$_format 문서를 표시하지 못했습니다.');
         break;
     }
   }
@@ -307,7 +319,7 @@ class _HwpViewerState extends State<HwpViewer> {
           onWebViewCreated: (controller) {
             _web = controller;
             controller.addJavaScriptHandler(
-              handlerName: 'freaderHwp',
+              handlerName: _jsObject,
               callback: (args) {
                 _event(args);
                 return null;
@@ -318,7 +330,7 @@ class _HwpViewerState extends State<HwpViewer> {
             // Recover a missed platform-ready event without re-opening a document.
             try {
               final ready = await controller.evaluateJavascript(
-                source: 'window.freaderHwp?.getState().ready === true',
+                source: 'window.$_jsObject?.getState().ready === true',
               );
               if (ready == true) unawaited(_transferDocument());
             } catch (error) {

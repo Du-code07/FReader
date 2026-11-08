@@ -1,0 +1,20 @@
+FReader DOCX reader
+
+OpenDocument.core 7.7.0 is bundled from the official @opendocument/odr-core
+npm package. The WASM engine is unmodified. The JavaScript module was renamed
+from .mjs to .js for Android MIME compatibility; the wrapper import was adjusted.
+The original wrapper is included as engine/index.upstream.js. Its HTML output is adapted for FReader's
+existing read-only UI. No document is uploaded, edited or saved by this viewer.
+
+License: Mozilla Public License 2.0, included in engine/LICENSE.
+Source: https://github.com/opendocument-app/OpenDocument.core
+Corresponding source commit: fae77ff7232cc79eecaebeb9e6839acf568d09c2
+Source archive (including build instructions and dependency declarations):
+https://github.com/opendocument-app/OpenDocument.core/archive/fae77ff7232cc79eecaebeb9e6839acf568d09c2.tar.gz
+Original package integrity and asset hashes: engine/PROVENANCE.json.
+
+The host reuses the Noto Sans KR, Noto Serif KR and Latin Modern Math fonts
+already bundled under assets/hwp/fonts. Their licenses and notices are included
+there and in assets/hwp/THIRD_PARTY_NOTICES.txt. Missing document fonts are
+substituted. FReader paginates the rendered content to the document's page size;
+the resulting pagination and complex Word features can differ from Microsoft Word.

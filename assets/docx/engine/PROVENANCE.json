@@ -1,0 +1,46 @@
+{
+  "package": "@opendocument/odr-core",
+  "version": "7.7.0",
+  "source": "https://github.com/opendocument-app/OpenDocument.core",
+  "sourceCommit": "fae77ff7232cc79eecaebeb9e6839acf568d09c2",
+  "sourceArchive": "https://github.com/opendocument-app/OpenDocument.core/archive/fae77ff7232cc79eecaebeb9e6839acf568d09c2.tar.gz",
+  "npmIntegrity": "sha512-2rr9FVzDGaz+0bBtvqcE/3NqsAa+C+ahGA/URGK7cMR6GCxN77P5gpd+5v82kCgRijP3AexFUQfl4eeXyWTXZA==",
+  "artifacts": {
+    "LICENSE": {
+      "bytes": 16726,
+      "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04"
+    },
+    "README.md": {
+      "bytes": 7192,
+      "sha256": "2f07a1fb081cf22d48267c4fe4f04616c377b5379bcddf6e1ff33cc8bc2af8f0"
+    },
+    "index.d.ts": {
+      "bytes": 13328,
+      "sha256": "e2de474fae42a186325482a430383a72b5c6921dcf4bd3a4b11e61df9183b6b1"
+    },
+    "index.js": {
+      "bytes": 7613,
+      "sha256": "54c9a294338c6b7a4d7a37836ea9c5eea3ab2edb510336eed1ea9d222502df05"
+    },
+    "index.upstream.js": {
+      "bytes": 7529,
+      "sha256": "5de64a41d87925183e7bf5ac34926dd3130972d3559c7c698597096a98da7de7"
+    },
+    "odr-core.js": {
+      "bytes": 96018,
+      "sha256": "b4bc3a237c3a2935fb1d79cf03c068974d61f5ae88e4ad731dbafb6ef013010e"
+    },
+    "odr-core.wasm": {
+      "bytes": 6079763,
+      "sha256": "c4c69145be35dddbbdeffc9579aeae8512cb3ae3b4b6f137a4590470a6159882"
+    },
+    "package.json": {
+      "bytes": 976,
+      "sha256": "42c9c01606d5d4c91cb9d33a7698cb09ccfd9345cb649a34d2d30046cee500a9"
+    }
+  },
+  "modifications": {
+    "index.js": "Only the module import extension and this modification notice differ from index.upstream.js.",
+    "odr-core.js": "Byte-identical to upstream odr-core.mjs, renamed for Android JavaScript MIME support."
+  }
+}
