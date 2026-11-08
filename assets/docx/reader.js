@@ -170,8 +170,8 @@ async function preparePages(html, current) {
   for (const source of sources) {
     source.style.height = source.style.minHeight || '297mm';
     source.style.width ||= '210mm';
-    if (detectedFormat === 'doc') {
-      // The legacy parser has no paper/margin information. Use a readable
+    if (detectedFormat === 'doc' || detectedFormat === 'rtf') {
+      // The legacy/RTF parser has no paper/margin information. Use a readable
       // fallback while preserving its paragraphs and explicit page breaks.
       const inner = source.querySelector(':scope > .odr-page-inner');
       if (inner && !inner.style.margin) inner.style.margin = '20mm';
