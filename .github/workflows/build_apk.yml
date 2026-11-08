@@ -537,6 +537,26 @@ jobs:
           print('Verified pinned rhwp 0.8.7, local fonts and license notices.')
           PYVERIFY
 
+      - name: 4g. Verify offline DOCX engine
+        shell: bash
+        run: |
+          python3 - <<'PYVERIFY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path('assets/docx/engine')
+          provenance = json.loads((root / 'PROVENANCE.json').read_text())
+          assert provenance['version'] == '7.7.0'
+          for name, expected in provenance['artifacts'].items():
+              content = (root / name).read_bytes()
+              assert len(content) == expected['bytes'], f'Wrong DOCX asset size: {name}'
+              assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong DOCX asset checksum: {name}'
+          for name in ['index.html', 'reader.js', 'reader.css', 'worker.js', 'THIRD_PARTY_NOTICES.txt']:
+              assert (root.parent / name).is_file(), f'Missing DOCX asset: {name}'
+          print('Verified pinned OpenDocument.core 7.7.0 and offline DOCX reader assets.')
+          PYVERIFY
+
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
           BUILD_NUM=$((121 + ${{ github.run_number }}))
