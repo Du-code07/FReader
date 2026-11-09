@@ -697,10 +697,39 @@ jobs:
           print('Verified offline TXT service, local EPUB reader and open-source notices.')
           PYVERIFY
 
+      - name: 4i. Verify offline PPT and PPTX engines
+        shell: bash
+        run: |
+          python3 - <<'PYVERIFY'
+          import hashlib
+          import json
+          from pathlib import Path
+          root = Path('assets/ppt')
+          provenance = json.loads((root / 'PROVENANCE.json').read_text())
+          for folder in ('engine', 'legacy'):
+              metadata = provenance[folder]
+              if metadata.get('version') != '0.89.8':
+                  raise SystemExit(f'Wrong PPT engine version: {folder}. Upload assets from the same release ZIP.')
+              for name, expected in metadata['artifacts'].items():
+                  asset = root / folder / name
+                  if not asset.is_file():
+                      raise SystemExit(f'Missing PPT engine asset: {asset}. Upload the complete assets folder.')
+                  data = asset.read_bytes()
+                  if len(data) != expected['bytes'] or hashlib.sha256(data).hexdigest() != expected['sha256']:
+                      raise SystemExit(f'Wrong PPT engine asset: {asset}. Replace it from the release ZIP.')
+              for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
+                  if not (root / folder / name).is_file():
+                      raise SystemExit(f'Missing PPT license notice: {folder}/{name}')
+          for name in ('index.html', 'reader.js', 'reader.css', 'THIRD_PARTY_NOTICES.txt'):
+              if not (root / name).is_file():
+                  raise SystemExit(f'Missing PPT viewer asset: {name}')
+          print('Verified offline PPT/PPTX 0.89.8 engines and license notices.')
+          PYVERIFY
+
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
           set -euo pipefail
-          BUILD_NUM=$((133 + ${{ github.run_number }}))
+          BUILD_NUM=$((134 + ${{ github.run_number }}))
           flutter pub get
           # Regression helpers are optional repository files, not app assets.
           # Run them when uploaded; a failed test still stops the build.
