@@ -56,11 +56,15 @@ class _HwpViewerState extends State<HwpViewer> {
   bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
   bool get _isDoc => widget.filePath.toLowerCase().endsWith('.doc');
   bool get _isWord => _isDocx || _isDoc;
-  String get _format => _isDocx ? 'DOCX' : _isDoc ? 'DOC' : 'HWP';
+  String get _format => _isDocx
+      ? 'DOCX'
+      : _isDoc
+      ? 'DOC'
+      : 'HWP';
   String get _entry =>
       '$_origin/assets/flutter_assets/assets/${_isWord ? 'docx' : 'hwp'}/index.html';
   String get _jsObject => _isWord ? 'freaderDocx' : 'freaderHwp';
-  List<Map<String, Object>> _pageBreaks = [];
+  Map<String, Object> _docxLayout = {};
   static const _maxBytes = 256 * 1024 * 1024;
   static const _chunkBytes = 192 * 1024;
   InAppWebViewController? _web;
@@ -80,7 +84,7 @@ class _HwpViewerState extends State<HwpViewer> {
     'position': widget.initialPosition,
     'progress': widget.initialProgress,
     if (_isWord) 'format': _isDoc ? 'doc' : 'docx',
-    if (_isDocx) 'pageBreaks': _pageBreaks,
+    if (_isDocx) 'docxLayout': _docxLayout,
   };
 
   @override
@@ -150,7 +154,7 @@ class _HwpViewerState extends State<HwpViewer> {
       }
       if (_isDocx) {
         final path = widget.filePath;
-        _pageBreaks = await Isolate.run(() => DocxLayoutHints.read(path));
+        _docxLayout = await Isolate.run(() => DocxLayoutHints.readLayout(path));
       }
       if (_disposed || !mounted) return;
       await _invoke('beginDocument', [length, _options]);

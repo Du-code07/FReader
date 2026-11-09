@@ -3,8 +3,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
-import 'package:flutter/services.dart';
 import 'package:xml/xml.dart';
+import 'txt_reader_service.dart';
 
 class _DocStyleInfo {
   double fontSizePt;
@@ -40,8 +40,6 @@ class _DocStyleInfo {
 }
 
 class TxtToEpubConverter {
-  static const MethodChannel _pdfChannel = MethodChannel('ebook_reader/pdf_renderer');
-
   static Future<File> convertTxtToEpub(File txtFile) async {
     return convertDocumentToEpub(txtFile);
   }
@@ -1709,26 +1707,12 @@ class TxtToEpubConverter {
     if (!['txt', 'docx', 'hwpx', 'hwp', 'doc'].contains(ext)) {
       throw const FormatException('지원하지 않는 문서 형식입니다.');
     }
+    if (ext == 'txt') return TxtReaderService.convert(inputFile);
     final bytes = await inputFile.readAsBytes();
     if (bytes.isEmpty) throw const FormatException('파일이 비어 있습니다.');
     final title = inputFile.uri.pathSegments.last.replaceAll(RegExp(r'\.[^.]+$'), '');
     List<Map<String, dynamic>> blocks;
     switch (ext) {
-      case 'txt':
-        String? content;
-        try {
-          content = await _pdfChannel.invokeMethod<String>(
-            'decodeTextBytes', {'bytes': bytes},
-          );
-        } on MissingPluginException {
-          // Pure Dart/desktop validation still supports Unicode encodings.
-        }
-        content ??= _decodeUnicodeText(bytes);
-        blocks = content.replaceFirst(RegExp(r'^\uFEFF'), '')
-            .split(RegExp(r'\r\n|\r|\n'))
-            .map((line) => <String, dynamic>{'type': 'paragraph', 'text': line})
-            .toList();
-        break;
       case 'docx':
         blocks = _extractDocxStructuredBlocks(bytes);
         break;
@@ -1752,20 +1736,6 @@ class TxtToEpubConverter {
       '_v25_converted.epub',
     ));
     return _buildEpubArchive(outFile, title, blocks);
-  }
-
-  static String _decodeUnicodeText(Uint8List bytes) {
-    if (bytes.length >= 2 &&
-        ((bytes[0] == 0xFF && bytes[1] == 0xFE) ||
-         (bytes[0] == 0xFE && bytes[1] == 0xFF))) {
-      if (bytes.length.isOdd) throw const FormatException('UTF-16 파일 길이가 올바르지 않습니다.');
-      final bd = ByteData.sublistView(bytes);
-      final endian = bytes[0] == 0xFF ? Endian.little : Endian.big;
-      return String.fromCharCodes([
-        for (var i = 2; i + 1 < bytes.length; i += 2) bd.getUint16(i, endian),
-      ]);
-    }
-    return utf8.decode(bytes);
   }
 
   static String _blockStyle(Map<String, dynamic> block) {

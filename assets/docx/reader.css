@@ -28,3 +28,20 @@ body[data-theme="dark"] .page img { filter: invert(1) hue-rotate(180deg); }
 .rtf-page-header, .rtf-page-footer { position: absolute; }
 .rtf-table { table-layout: fixed; border-collapse: collapse; }
 .rtf-table td { padding: 0; vertical-align: top; }
+
+/* OOXML-only rules: preserve the existing DOC/RTF and application UI. */
+.docx-layout x-p { overflow-wrap: break-word; }
+.docx-layout x-s { tab-size: var(--docx-tab, .5in); }
+.docx-table { border-collapse: collapse; }
+.docx-table td { box-sizing: border-box; }
+.docx-layout img { max-width: 100%; object-fit: contain; }
+
+.docx-layout .docx-toc-entry { display: flex !important; align-items: baseline; gap: .25em; text-align: left !important; }
+.docx-toc-label { flex: 0 1 auto; }
+.docx-toc-leader { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; }
+.docx-toc-number { flex: none; white-space: nowrap; }
+
+.docx-tab { display: inline-block; width: 0; white-space: pre; overflow: hidden; vertical-align: baseline; position: relative; }
+.docx-tab[data-leader]::after { content: ''; position: absolute; left: 0; right: 0; bottom: .15em; border-bottom: 1px dotted currentColor; }
+.docx-tab[data-leader="hyphen"]::after { border-bottom-style: dashed; }
+.docx-tab[data-leader="underscore"]::after { border-bottom-style: solid; }

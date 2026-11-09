@@ -1,0 +1,11 @@
+FReader offline TXT support
+
+TXT bytes are decoded by Dart Unicode codecs and cp949_codec 1.0.2 (BSD-3-Clause).
+The local FReader adapter writes bounded EPUB chapters using archive 3.6.1 (MIT).
+They are displayed by the existing flutter_epub_viewer 2.2.1 (BSD-3-Clause),
+which embeds Epub.js 0.3 (the bundled build) (BSD-2-Clause). Epub.js is an EPUB renderer;
+TXT decoding/conversion is supplied by FReader, not by Epub.js itself.
+No account, remote document upload, payment, or runtime network download is required.
+The original TXT file is never modified.
+
+See the accompanying license files and PROVENANCE.json for upstream sources.

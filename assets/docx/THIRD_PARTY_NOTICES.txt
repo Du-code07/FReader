@@ -28,3 +28,12 @@ furniture separately; it does not modify OpenDocument.core or the input file.
 emf-converter 4.3.5 (Apache-2.0): offline EMF/WMF image conversion.
 Source: https://github.com/ChristopherVR/emf-converter
 License and provenance: metafile/LICENSE and metafile/PROVENANCE.json.
+
+The local DOCX adapter supplements the engine with OOXML theme fonts, character
+spacing, paragraph indents, table margins/shading, section geometry and saved
+page-break hints. Literal-dot TOC leaders remain in the DOM and adapt to the
+available line width. Cached page breaks are hints, not a Microsoft Word layout
+engine; substituted fonts and complex floating objects can still change pages.
+Additional unmodified Noto Sans / Noto Serif Latin TrueType fonts are bundled
+under fonts/ (SIL Open Font License 1.1). Licenses and original download URLs,
+file sizes and SHA-256 checksums: fonts/*-OFL.txt and LATIN_PROVENANCE.json.

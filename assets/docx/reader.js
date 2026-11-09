@@ -1,3 +1,4 @@
+import { applyDocxLayout, finalizeDocxLayout } from './docx_layout.js';
 // Read-only adapter for OpenDocument.core. All assets and documents stay local.
 const host = document.getElementById('pages');
 const measure = document.getElementById('measure');
@@ -98,6 +99,15 @@ function fontKind(name) {
   return /바탕|명조|궁서|batang|myeong|serif|times|cambria/i.test(name) ? 'serif' : 'sans';
 }
 async function loadFonts(root) {
+  // Keep DOCX substitutions separate from the established DOC/RTF font aliases.
+  if (detectedFormat === 'docx' && options.docxLayout?.version === 1) {
+    for (const el of root.querySelectorAll('[style]')) {
+      if (el.style.fontFamily) el.style.fontFamily = el.style.fontFamily.split(',').map(part => {
+        const name = part.trim().replace(/^['"]|['"]$/g, '');
+        return /^(sans-serif|serif|monospace|inherit|initial)$/i.test(name) ? name : JSON.stringify('DOCX ' + name);
+      }).join(',');
+    }
+  }
   const names = new Set(['FReaderSans', 'FReaderSerif', '맑은 고딕', '바탕', '굴림', '돋움', 'Calibri', 'Arial', 'Times New Roman']);
   for (const el of root.querySelectorAll('[style]')) {
     for (const part of el.style.fontFamily.split(',')) {
@@ -108,13 +118,18 @@ async function loadFonts(root) {
   await Promise.all([...names].slice(0, 128).map(async name => {
     if (fonts.has(name)) return fonts.get(name);
     if (name.length > 160 || /[\x00-\x1f]/.test(name)) return;
-    const kind = fontKind(name), base = kind === 'math' ? 'LatinModernMath' : kind === 'serif' ? 'NotoSerifKR' : 'NotoSansKR';
+    const localName = name.startsWith('DOCX ') ? name.slice(5) : name;
+    const kind = fontKind(localName), base = kind === 'math' ? 'LatinModernMath' : kind === 'serif' ? 'NotoSerifKR' : 'NotoSansKR';
     const job = Promise.all((kind === 'math' ? [400] : [400, 700]).map(async weight => {
-      const face = new FontFace(name, `local(${JSON.stringify(name)}), url(../hwp/fonts/${base}-${weight === 700 ? 'Bold' : 'Regular'}.woff2)`, { weight: String(weight) });
+      const face = new FontFace(name, `local(${JSON.stringify(localName)}), url(../hwp/fonts/${base}-${weight === 700 ? 'Bold' : 'Regular'}.woff2)`, { weight: String(weight) });
       await face.load(); document.fonts.add(face);
       if (kind !== 'math') {
         const symbols = new FontFace(name, `url(./fonts/${base}-Symbols-${weight === 700 ? 'Bold' : 'Regular'}.ttf)`, { weight: String(weight), unicodeRange: 'U+3000-303F' });
         await symbols.load(); document.fonts.add(symbols);
+        if (name.startsWith('DOCX ')) {
+        const latin = new FontFace(name, `local(${JSON.stringify(localName)}), url(./fonts/Noto${kind === 'serif' ? 'Serif' : 'Sans'}-Latin-${weight === 700 ? 'Bold' : 'Regular'}.ttf)`, { weight: String(weight), unicodeRange: 'U+0000-024F' });
+        await latin.load(); document.fonts.add(latin);
+        }
       }
     }));
     fonts.set(name, job); return job;
@@ -162,7 +177,7 @@ function applyPageBreaks(parsed) {
 async function preparePages(html, current) {
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   sanitize(parsed);
-  applyPageBreaks(parsed);
+  if (detectedFormat !== 'docx' || !applyDocxLayout(parsed, options.docxLayout)) applyPageBreaks(parsed);
   const sources = [...parsed.querySelectorAll('.odr-pages > .odr-page-outer')];
   if (!sources.length) throw new Error('Word 문서에서 표시할 본문을 찾지 못했습니다.');
   for (const style of parsed.head.querySelectorAll('style')) {
@@ -182,6 +197,7 @@ async function preparePages(html, current) {
     }
     measure.appendChild(document.importNode(source, true));
   }
+  finalizeDocxLayout(measure, options.docxLayout);
   originalSources = new Set(measure.children);
   // OOXML specifies the display extents. Reserve them without decoding every
   // photograph. Only unusual images without extents need an intrinsic-size probe.
@@ -225,6 +241,19 @@ async function preparePages(html, current) {
     const margin = ['Top', 'Right', 'Bottom', 'Left'].map(side => parseFloat(css['margin' + side]) || 0);
     const bodyWidth = Math.max(32, width - margin[1] - margin[3]);
     const bodyHeight = Math.max(32, height - margin[0] - margin[2]);
+    if (inner.classList.contains('docx-layout')) {
+      // Chromium can fragment a short merged-cell table and leave border-only
+      // fragments in later columns. Keep a table together if it fits one page;
+      // long tables still paginate row by row without clipping their contents.
+      for (const table of inner.querySelectorAll('table')) {
+        if (table.getBoundingClientRect().height <= bodyHeight) table.style.breakInside = 'avoid';
+      }
+      for (const img of inner.querySelectorAll('img')) {
+        const frame = img.parentElement;
+        if (frame?.localName === 'div' && frame.getBoundingClientRect().height <= bodyHeight) frame.style.breakInside = 'avoid';
+      }
+    }
+
     const clip = document.createElement('div'); clip.className = 'freader-content';
     Object.assign(clip.style, { left: `${margin[3]}px`, top: `${margin[0]}px`, width: `${bodyWidth}px`, height: `${bodyHeight}px` });
     inner.replaceWith(clip); clip.appendChild(inner);

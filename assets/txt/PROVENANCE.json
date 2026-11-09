@@ -1,0 +1,51 @@
+{
+  "description": "Offline TXT adapter for the existing Epub.js reader; no paid API or remote conversion.",
+  "dependencies": [
+    {
+      "name": "cp949_codec",
+      "version": "1.0.2",
+      "license": "BSD-3-Clause",
+      "source": "https://github.com/letyletylety/cp949_codec",
+      "package_url": "https://pub.dev/api/archives/cp949_codec-1.0.2.tar.gz",
+      "package_sha256": "a381b062b0727a22ac022a6562c49ea6e2eed487d6cb8a676b44cdc593716782"
+    },
+    {
+      "name": "flutter_epub_viewer",
+      "version": "2.2.1",
+      "license": "BSD-3-Clause",
+      "source": "https://github.com/fayis672/epub_viewer"
+    },
+    {
+      "name": "epub.js",
+      "version": "0.3 (bundled in flutter_epub_viewer 2.2.1)",
+      "license": "BSD-2-Clause",
+      "source": "https://github.com/futurepress/epub.js",
+      "license_url": "https://raw.githubusercontent.com/futurepress/epub.js/v0.3.93/license",
+      "bundled_js_sha256": "a4e9b867e5590d8af13d418974cfe63df8cf2e98def9bea8ac46debbd4962650"
+    },
+    {
+      "name": "archive",
+      "version": "3.6.1",
+      "license": "MIT",
+      "source": "https://github.com/brendan-duncan/archive"
+    }
+  ],
+  "files": {
+    "archive-LICENSE.txt": {
+      "sha256": "32f97d332eae7453ec4079858e6f1d74be85beeb6d3881068b47d02a379cccea",
+      "bytes": 1101
+    },
+    "flutter_epub_viewer-LICENSE.txt": {
+      "sha256": "9ee8ced2453d3ad7b00e0989dc031dc06e7933ad12a704470c05a411617132c3",
+      "bytes": 1533
+    },
+    "cp949_codec-LICENSE.txt": {
+      "sha256": "97327cdbf89a1b905094227fb7b70a3ed40d18e931e44b75081a2bd6f758d033",
+      "bytes": 1512
+    },
+    "epubjs-LICENSE.txt": {
+      "sha256": "8663e726f4194e1a34913b223c2e4745ed06f3ec645a66a41ab70b735070b692",
+      "bytes": 1516
+    }
+  }
+}
