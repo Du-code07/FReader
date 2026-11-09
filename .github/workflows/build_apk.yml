@@ -720,16 +720,22 @@ jobs:
               for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
                   if not (root / folder / name).is_file():
                       raise SystemExit(f'Missing PPT license notice: {folder}/{name}')
-          for name in ('index.html', 'reader.js', 'reader.css', 'THIRD_PARTY_NOTICES.txt'):
+          if provenance.get('integrationRevision') != 54:
+              raise SystemExit('Wrong PPT viewer integration. Upload the complete assets/ppt folder from v54.')
+          for name, expected in provenance['integrationArtifacts'].items():
+              asset = root / name
+              if not asset.is_file() or hashlib.sha256(asset.read_bytes()).hexdigest() != expected['sha256']:
+                  raise SystemExit(f'Missing or outdated PPT viewer file: {asset}. Upload assets from the same ZIP.')
+          for name in ('index.html', 'reader.js', 'reader.css', 'animation_steps.js', 'THIRD_PARTY_NOTICES.txt'):
               if not (root / name).is_file():
                   raise SystemExit(f'Missing PPT viewer asset: {name}')
-          print('Verified offline PPT/PPTX 0.89.8 engines and license notices.')
+          print('Verified offline PPT/PPTX 0.89.8 engines, v54 animation steps and license notices.')
           PYVERIFY
 
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
           set -euo pipefail
-          BUILD_NUM=$((134 + ${{ github.run_number }}))
+          BUILD_NUM=$((135 + ${{ github.run_number }}))
           flutter pub get
           # Regression helpers are optional repository files, not app assets.
           # Run them when uploaded; a failed test still stops the build.
