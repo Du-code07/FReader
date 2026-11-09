@@ -5,7 +5,7 @@
     "license": "MIT",
     "npmIntegrity": "sha512-t5dJ+pLGUTmjDjGNV9wE1cdRqFg5vDSVZN7I7okMSiMNnCR9tdk0P7O9yZ8EtXgtV2rToF7E4L6Lbca7yt+4+w==",
     "npmTarball": "https://registry.npmjs.org/@silurus/ooxml/-/ooxml-0.89.8.tgz",
-    "modifications": "ES module .mjs filenames/references renamed to .js for Android asset MIME handling. Legacy companion import points to the bundled engine; no parsing or rendering logic changed.",
+    "modifications": "ES module .mjs filenames/references renamed to .js for Android asset MIME handling. FReader v56 replaces merged continuation coordinate expansion in renderer-CCA_bQB8.js with the range interval index in ../merge_ranges.js. Original parsed merge rectangles, anchors and styles remain intact.",
     "artifacts": {
       "abort-JztSoyw2.js": {
         "upstreamName": "abort-JztSoyw2.js",
@@ -153,8 +153,8 @@
       },
       "renderer-CCA_bQB8.js": {
         "upstreamName": "renderer-CCA_bQB8.js",
-        "bytes": 166200,
-        "sha256": "10486cd74f63afc7797f98873ea3fcb9af4fc6aec00d1fa4560995b4f9ac5772",
+        "bytes": 164704,
+        "sha256": "e8daf0c41484890387703a7a80d7ebe0e4f6bc99e875c2b2875942c1d9bbbb32",
         "upstreamSha256": "10486cd74f63afc7797f98873ea3fcb9af4fc6aec00d1fa4560995b4f9ac5772"
       },
       "renderer-DpTePxGq.js": {
@@ -283,23 +283,27 @@
       }
     }
   },
-  "integrationRevision": 55,
+  "integrationRevision": 56,
   "integrationArtifacts": {
     "index.html": {
       "bytes": 666,
       "sha256": "553bd9f6128b2f1215fbe7d14d2bff17a4837a1067722fbb7dd5d334576a1c08"
     },
     "reader.js": {
-      "bytes": 13791,
-      "sha256": "bb7c385bcc078d3f7d153db856ccfc9db44c7b3c6e21ce52018622550a3ecdf0"
+      "bytes": 14041,
+      "sha256": "3ecbaf46b94ee225055cdfbeb1c28ef27b4b5e1bbcf99888a72797957c803c0d"
     },
     "reader.css": {
       "bytes": 487,
       "sha256": "b6e1f19885a6a111084f373d58468999296f7928e311ab2c211f5fe16e3777fc"
     },
+    "merge_ranges.js": {
+      "bytes": 1707,
+      "sha256": "fce24139691cdb8cbc049668c8483075c0e2a619ed03039b84c1fe14852efae4"
+    },
     "THIRD_PARTY_NOTICES.txt": {
-      "bytes": 1953,
-      "sha256": "d08c7d2c8ab43c0e58206fbb95ef6871641e399623066f0437d9c89ccf095c84"
+      "bytes": 2167,
+      "sha256": "d71da1846f7f5a425d91dd0ba8ae690fd87965ad074c91caece71c3e5efc5c68"
     }
   }
 }

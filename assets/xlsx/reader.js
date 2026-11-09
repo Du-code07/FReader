@@ -119,7 +119,12 @@ async function openDocument(password = null) {
       legacyXls, math, chartEx, threeD, tiff, mode: 'main',
       useGoogleFonts: false, cjkFallback: 'kr', password: password ?? undefined,
       workerTimeoutMs: 240000, resizable: false, showScrollbars: true,
-      minRows: 30, minCols: 12, marginRows: 10, marginCols: 3,
+      // Logical grid bounds only: sparse axes and viewport painting do not
+      // allocate these empty cells. Keep long overflowing text and content
+      // beyond the saved used range reachable in every worksheet.
+      minRows: options.format === 'xls' ? 65536 : 1048576,
+      minCols: options.format === 'xls' ? 256 : 16384,
+      marginRows: 0, marginCols: 0,
       enableHyperlinks: false, hiddenSheetMode: 'show', zoomMin: .25, zoomMax: 4,
       resourceLimits: { maxArchiveEntryBytes: 128 * 1024 * 1024, maxTotalInflatedBytes: 512 * 1024 * 1024, maxArchiveEntries: 20000 },
       imageResources: { decodedByteBudget: 64 * 1024 * 1024, strategy: 'adaptive', resolution: 'display' },
@@ -130,7 +135,7 @@ async function openDocument(password = null) {
     await active.load(bytes.buffer);
     password = null;
     if (disposed || current !== generation) { active.destroy(); return false; }
-    if (!Number.isInteger(active.sheetCount) || active.sheetCount < 1 || active.sheetCount > 10000) throw new Error('표시할 시트가 없거나 시트 수가 너무 많습니다.');
+    if (!Number.isSafeInteger(active.sheetCount) || active.sheetCount < 1) throw new Error('표시할 시트가 없습니다.');
     await restorePosition(options.position, options.progress);
     if (disposed || current !== generation) return false;
     awaitingPassword = false; incoming = null; received = 0; wipe(bytes);

@@ -1,3 +1,4 @@
+import { mergedContinuations } from "../merge_ranges.js";
 import { An as e, Br as t, Dn as n, Do as r, Dr as i, En as a, Fa as o, Ia as s, Io as c, Jr as l, Kr as u, Mn as d, Mo as f, No as p, On as m, Oo as h, Po as g, So as _, Tn as v, Vr as y, _o as b, ai as x, ar as S, cr as C, do as w, fo as T, fr as E, go as D, ho as O, jn as k, jo as A, kn as j, mo as M, ni as N, nr as P, or as ee, pr as te, u as F, uo as I, vo as L, wn as R, wo as z, xo as B, xr as V, yo as ne } from "./plot-area-frame-DNYMd9Pf.js";
 import { $ as re, C as H, Ct as U, D as W, E as G, Pt as K, Rt as ie, S as q, a as ae, b as oe, ct as se, dn as ce, et as le, g as J, h as ue, in as de, kn as fe, l as pe, ln as me, nn as he, nt as ge, on as _e, st as ve, tn as ye, tt as be, un as xe, v as Se, x as Ce, y as we, yn as Te } from "./bounded-raw-part-cache-B5a6cGKO.js";
 import { H as Ee, r as De } from "./renderer-DpTePxGq.js";
@@ -968,86 +969,23 @@ function nn(e, t) {
 	}
 	return n;
 }
+// FReader v56: range-sized merge index; retain all original rectangles and anchors.
 function rn(e, t, n) {
-	let r = /* @__PURE__ */ new Set(), i = /* @__PURE__ */ new Set(), a = [];
-	for (let i of e) Ut(r, `${i.top}:${i.left}`, t), Bt(i, n, 1), i.bottom >= i.top && i.right >= i.left && a.push(i);
-	if (a.length === 0) return {
-		anchors: r,
-		continuations: i
-	};
-	let o = [...new Set(a.flatMap((e) => [e.left, e.right + 1]))].sort((e, t) => e - t), s = /* @__PURE__ */ new Map();
-	o.forEach((e, t) => s.set(e, t));
-	let c = o.length - 1, l = new Int32Array(c * 4), u = new Uint8Array(c * 4), d = (e, t, n, r, i, a) => {
-		if (!(i < t || n < r)) {
-			if (r <= t && n <= i) l[e] += a;
-			else {
-				let o = t + n >> 1;
-				d(e * 2, t, o, r, i, a), d(e * 2 + 1, o + 1, n, r, i, a);
-			}
-			u[e] = l[e] > 0 || t < n && (u[e * 2] || u[e * 2 + 1]) ? 1 : 0;
-		}
-	}, f = (e) => {
-		let t = 1, n = 0, r = c - 1, i = 0;
-		for (;;) {
-			if (i += l[t], n === r) return i;
-			let a = n + r >> 1;
-			e <= a ? (t *= 2, r = a) : (t = t * 2 + 1, n = a + 1);
-		}
-	}, p = (e, t, n, r) => {
-		if (!u[e]) return;
-		if (l[e] > 0) {
-			let e = r.at(-1);
-			e && e[1] === o[t] - 1 ? e[1] = o[n + 1] - 1 : r.push([o[t], o[n + 1] - 1]);
-			return;
-		}
-		let i = t + n >> 1;
-		p(e * 2, t, i, r), p(e * 2 + 1, i + 1, n, r);
-	}, m = [], h = /* @__PURE__ */ new Map(), g = /* @__PURE__ */ new Map();
-	for (let e of a) {
-		let t = s.get(e.left), n = s.get(e.right + 1) - 1;
-		m.push({
-			row: e.top,
-			l: t,
-			r: n,
-			delta: 1
-		}, {
-			row: e.bottom + 1,
-			l: t,
-			r: n,
-			delta: -1
-		});
-		let r = `${e.top}:${e.left}`, i = h.get(r);
-		if (h.set(r, (i ?? 0) + 1), i === void 0) {
-			let t = g.get(e.top);
-			t ? t.push(e.left) : g.set(e.top, [e.left]);
-		}
-	}
-	m.sort((e, t) => e.row - t.row);
-	let _ = 0;
-	for (; _ < m.length;) {
-		let e = m[_].row;
-		for (; _ < m.length && m[_].row === e;) {
-			let { l: e, r: t, delta: n } = m[_++];
-			d(1, 0, c - 1, e, t, n);
-		}
-		if (!u[1] || _ >= m.length) continue;
-		let t = m[_].row - 1, r = /* @__PURE__ */ new Set();
-		for (let t of g.get(e) ?? []) {
-			let n = `${e}:${t}`;
-			f(s.get(t)) === h.get(n) && r.add(n);
-		}
-		let a = [];
-		p(1, 0, c - 1, a);
-		for (let o = e; o <= t; o++) for (let [t, s] of a) for (let a = t; a <= s; a++) {
-			let t = `${o}:${a}`;
-			o === e && r.has(t) || Ut(i, t, n);
-		}
-	}
-	return {
-		anchors: r,
-		continuations: i
-	};
+  const anchors = new Set(), ranges = [];
+  for (const range of e) {
+    const { top, bottom, left, right } = range;
+    if (![top, bottom, left, right].every(Number.isSafeInteger) || top < 1 || left < 1 || bottom > 1048576 || right > 16384) {
+      throw zt(n, Rt(n), Rt(n) + 1, false);
+    }
+    Ut(anchors, `${top}:${left}`, t);
+    if (bottom < top || right < left) continue;
+    // Limit actual stored rectangles, rather than the empty coordinates they span.
+    if (ranges.length >= Rt(n)) throw zt(n, Rt(n), ranges.length + 1, true);
+    ranges.push(range);
+  }
+  return { anchors, continuations: mergedContinuations(ranges) };
 }
+
 function an(e) {
 	return Array.from(e);
 }
