@@ -20,3 +20,15 @@ FReader v50 loading patch
 - epub_web_view_io.dart: retry the ready handshake on main-page load completion.
 - Application EPUB validation now reads metadata lazily off the UI isolate and
   supports encoded package paths, unique case-insensitive paths and UTF-16 XML.
+
+FReader v51 viewport and swipe patch
+- swipe.html: use a top-aligned, bounded application viewport instead of the
+  upstream demo's flex centering and 800px minimum body height.
+- epubView.js: remove the unitless innerHeight assignment. At early Android
+  startup, 0 became a persistent 0px viewer while positive values were ignored.
+  Wait for a nonzero viewport stable over two animation frames before creating
+  a rendition. Superseded loads are cancelled; a 15s limit reports a load error.
+- Keep the host size responsive to rotation; no one-time inline pixel height.
+- Use chapter-local swipe state and client coordinates; cancel multi-touch and
+  cancelled gestures. Reset navigation wrappers when reusing the same WebView.
+- Existing EPUB content, UI, native transport and licenses are unchanged.

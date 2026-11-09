@@ -19,6 +19,10 @@ var currentLoadToken = 0; // Incremented per loadBook; stale async callbacks bai
 // Destroys the previous book so loading another one in the same view does not
 // leak its rendition, iframes and unzipped archive.
 function teardownBook() {
+  originalNext = null;
+  originalPrev = null;
+  originalDisplay = null;
+  window.lastValidLocation = null;
   if (!rendition && !book.isOpen) return;
   // The rendition is destroyed on its own first: epub.js's view manager can
   // throw while destroying a view that has not finished attaching, and that
@@ -113,9 +117,59 @@ function reportLoadError(error) {
   window.flutter_inappwebview.callHandler('loadError', message);
 }
 
-// Loads and renders a book. `opts` is a settings object (see the Dart
-// EpubViewer.loadBook for the exact keys) — replaces the old 16 positional args.
+// Android can run the bridge before the platform view has a viewport. Never
+// paginate a zero-size view: continuous-manager visibility/scroll calculations
+// would then be made against an empty rectangle. Require two stable frames.
+function waitForReaderViewport(loadToken) {
+  return new Promise(function (resolve, reject) {
+    var frame;
+    var lastWidth = 0;
+    var lastHeight = 0;
+    var deadline = setTimeout(function () {
+      cancelAnimationFrame(frame);
+      if (loadToken !== currentLoadToken) resolve(false);
+      else reject(new Error('EPUB viewport is not ready. Please reopen the reader.'));
+    }, 15000);
+    function check() {
+      if (loadToken !== currentLoadToken) {
+        clearTimeout(deadline);
+        resolve(false);
+        return;
+      }
+      var viewer = document.getElementById('viewer');
+      var rect = viewer && viewer.getBoundingClientRect();
+      var width = rect && Math.round(rect.width);
+      var height = rect && Math.round(rect.height);
+      if (window.innerWidth > 1 && window.innerHeight > 1 && width > 1 && height > 1) {
+        if (width === lastWidth && height === lastHeight) {
+          clearTimeout(deadline);
+          resolve(true);
+          return;
+        }
+        lastWidth = width;
+        lastHeight = height;
+      } else {
+        lastWidth = lastHeight = 0;
+      }
+      frame = requestAnimationFrame(check);
+    }
+    frame = requestAnimationFrame(check);
+  });
+}
+
+// Loads and renders a book only after its host has a usable size. Keep the
+// bridge synchronous; async failures are explicitly sent back to Flutter.
 function loadBook(data, opts) {
+  var loadToken = ++currentLoadToken;
+  teardownBook();
+  waitForReaderViewport(loadToken).then(function (ready) {
+    if (ready && loadToken === currentLoadToken) renderBook(data, opts, loadToken);
+  }).catch(function (error) {
+    if (loadToken === currentLoadToken) reportLoadError(error);
+  });
+}
+
+function renderBook(data, opts, loadToken) {
   opts = opts || {};
   // Base URL of the book on the local server (see EpubBookServer). When set,
   // `data` is null and epub.js opens the book as an unpacked directory.
@@ -142,10 +196,6 @@ function loadBook(data, opts) {
   // Serialized locations from a previous run (see EpubViewer.initialLocations).
   var cachedLocations = opts.cachedLocations || null;
   var reportLocations = !!opts.reportLocations;
-  var loadToken = ++currentLoadToken;
-
-  teardownBook();
-
   // Reset flags for new book
   initialXPathProcessed = false;
   xpathDisplayInProgress = false;
@@ -154,8 +204,9 @@ function loadBook(data, opts) {
   clearSelectionOnPageChange = clearSelectionOnNav !== undefined ? clearSelectionOnNav : true;
   // Store the selectAnnotationRange setting
   selectAnnotationRange = selectAnnotationRangeParam !== undefined ? selectAnnotationRangeParam : false;
-  var viewportHeight = window.innerHeight;
-  document.getElementById('viewer').style.height = viewportHeight;
+  // The host is sized by CSS, including after rotation. Assigning a unitless
+  // innerHeight here silently ignored positive heights but accepted zero as
+  // "0px", permanently collapsing the viewer during early Android startup.
   var opening;
   if (bookUrl) {
     // Served by URL: epub.js fetches only what it displays, and images and
@@ -2931,7 +2982,10 @@ function checkSelectionAndReapplyBlocking() {
 }
 
 function detectSwipe(el, func) {
-  swipe_det = new Object();
+  // Each chapter owns its gesture state. A prefetched iframe must not reset
+  // the gesture in the visible chapter. client coordinates also work when a
+  // WebView reports screenX/screenY as zero.
+  var swipe_det = {};
   swipe_det.sX = 0;
   swipe_det.sY = 0;
   swipe_det.eX = 0;
@@ -2944,8 +2998,16 @@ function detectSwipe(el, func) {
   var min_y = 40;  //min y swipe for vertical swipe
   var max_y = 50;  //max y difference for horizontal swipe
   var direc = "";
-  ele = el
+  var ele = el;
+  ele.addEventListener('touchcancel', function () {
+    swipe_det.blocked = true;
+    swipe_det.touchStartTime = null;
+  }, { capture: true, passive: true });
   ele.addEventListener('touchstart', function (e) {
+    if (!e.touches || e.touches.length !== 1) {
+      swipe_det.blocked = true;
+      return;
+    }
     // Check if selection exists at start of gesture
     if (hasActiveSelection()) {
       // Store position and time to detect if it's a tap or swipe
@@ -2954,8 +3016,8 @@ function detectSwipe(el, func) {
       swipe_det.touchStartTime = Date.now();
       if (e.touches && e.touches.length > 0) {
         var t = e.touches[0];
-        swipe_det.sX = t.screenX;
-        swipe_det.sY = t.screenY;
+        swipe_det.sX = t.clientX;
+        swipe_det.sY = t.clientY;
         swipe_det.eX = swipe_det.sX;
         swipe_det.eY = swipe_det.sY;
       }
@@ -2965,18 +3027,20 @@ function detectSwipe(el, func) {
       swipe_det.hasMoved = false;
       swipe_det.touchStartTime = Date.now();
       var t = e.touches[0];
-      swipe_det.sX = t.screenX;
-      swipe_det.sY = t.screenY;
+      swipe_det.sX = t.clientX;
+      swipe_det.sY = t.clientY;
       swipe_det.eX = swipe_det.sX;
       swipe_det.eY = swipe_det.sY;
     }
   }, { capture: true, passive: false }); // Use options object with passive: false
   ele.addEventListener('touchmove', function (e) {
+    if (!e.touches || e.touches.length !== 1) swipe_det.blocked = true;
+    if (swipe_det.blocked || swipe_det.touchStartTime === null) return;
     // If selection exists, check if it's a swipe
     if (hasActiveSelection()) {
       var t = e.touches[0];
-      swipe_det.eX = t.screenX;
-      swipe_det.eY = t.screenY;
+      swipe_det.eX = t.clientX;
+      swipe_det.eY = t.clientY;
 
       var deltaX = Math.abs(swipe_det.eX - swipe_det.sX);
       var deltaY = Math.abs(swipe_det.eY - swipe_det.sY);
@@ -3003,11 +3067,16 @@ function detectSwipe(el, func) {
       // Only prevent default if we're actually tracking a swipe
       e.preventDefault();
       var t = e.touches[0];
-      swipe_det.eX = t.screenX;
-      swipe_det.eY = t.screenY;
+      swipe_det.eX = t.clientX;
+      swipe_det.eY = t.clientY;
     }
   }, { capture: true, passive: false }); // Use options object with passive: false
   ele.addEventListener('touchend', function (e) {
+    if (swipe_det.touchStartTime === null) return;
+    if (!swipe_det.blocked && e.changedTouches && e.changedTouches.length) {
+      swipe_det.eX = e.changedTouches[0].clientX;
+      swipe_det.eY = e.changedTouches[0].clientY;
+    }
     // If selection exists, check if it was a tap or swipe
     if (hasActiveSelection()) {
       if (swipe_det.touchStartTime !== null) {
