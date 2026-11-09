@@ -755,19 +755,22 @@ jobs:
               for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
                   if not (root / folder / name).is_file():
                       raise SystemExit(f'Missing Excel license notice: {folder}/{name}')
-          if provenance.get('integrationRevision') != 55:
-              raise SystemExit('Wrong Excel viewer integration. Upload the complete assets/xlsx folder from v55.')
+          if provenance.get('integrationRevision') != 56:
+              raise SystemExit('Wrong Excel viewer integration. Upload the complete assets/xlsx folder from v56.')
           for name, expected in provenance['integrationArtifacts'].items():
               asset = root / name
               if not asset.is_file() or hashlib.sha256(asset.read_bytes()).hexdigest() != expected['sha256']:
                   raise SystemExit(f'Missing or outdated Excel viewer file: {asset}. Upload assets from the same ZIP.')
-          print('Verified offline XLSX/XLSM/XLS engines, mobile adapter and license notices.')
+          for name in ('index.html', 'reader.js', 'reader.css', 'merge_ranges.js', 'THIRD_PARTY_NOTICES.txt'):
+              if not (root / name).is_file():
+                  raise SystemExit(f'Missing Excel viewer asset: {name}')
+          print('Verified offline Excel engines and v56 range-based merged-cell rendering.')
           PYVERIFY
 
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
           set -euo pipefail
-          BUILD_NUM=$((136 + ${{ github.run_number }}))
+          BUILD_NUM=$((137 + ${{ github.run_number }}))
           flutter pub get
           # Regression helpers are optional repository files, not app assets.
           # Run them when uploaded; a failed test still stops the build.
