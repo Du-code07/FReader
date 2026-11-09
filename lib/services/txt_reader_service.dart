@@ -6,12 +6,84 @@ import 'dart:typed_data';
 import 'package:archive/archive_io.dart';
 import 'package:cp949_codec/cp949_codec.dart';
 
-/// Offline TXT adapter for the existing flutter_epub_viewer / Epub.js reader.
-/// Decode and write bounded chapters off the UI isolate; no platform channel
-/// carries the entire source or its decoded text.
+/// Offline TXT decoding shared by the native paper-page reader and the legacy
+/// EPUB adapter. Decoding runs off the UI isolate; no platform channel carries
+/// the entire source or its decoded text.
 class TxtReaderService {
   static const maxInputBytes = 256 * 1024 * 1024;
   static final Map<String, Future<File>> _pending = {};
+
+  /// Decode into a private, temporary UTF-8 file for the native paged reader.
+  /// The source remains a TXT: no EPUB/PDF is added to the user's bookshelf.
+  static Future<File> preparePlainText(File input, Directory temporary) async {
+    final source = input.absolute.path;
+    final destination = '${temporary.path}/body.txt';
+    await Isolate.run(() => _preparePlainText(source, destination));
+    return File(destination);
+  }
+
+  static Future<void> _preparePlainText(String path, String destination) async {
+    final input = File(path);
+    final before = await input.stat();
+    if (before.size == 0) throw const FormatException('TXT 파일이 비어 있습니다.');
+    if (before.size > maxInputBytes) {
+      throw const FormatException('TXT 파일은 최대 256 MiB까지 열 수 있습니다.');
+    }
+    final handle = await input.open();
+    late final Uint8List sample;
+    try {
+      sample = await handle.read(8192);
+    } finally {
+      await handle.close();
+    }
+    final (encoding, skip) = _detect(sample);
+    try {
+      await _writePlainText(input, File(destination), encoding, skip);
+    } on FormatException {
+      if (encoding != 'utf8' || skip != 0) rethrow;
+      await _writePlainText(input, File(destination), 'cp949', 0);
+    }
+    final after = await input.stat();
+    if (before.size != after.size || before.modified != after.modified) {
+      throw const FileSystemException('읽는 중 TXT 파일이 변경되었습니다. 다시 열어 주세요.');
+    }
+  }
+
+  static Future<void> _writePlainText(
+    File input,
+    File output,
+    String encoding,
+    int skip,
+  ) async {
+    final sink = output.openWrite();
+    var previousCr = false;
+    var column = 0;
+    try {
+      await for (final text in decodeChunks(input.openRead(skip), encoding)) {
+        final normalized = StringBuffer();
+        for (var rune in text.runes) {
+          if (previousCr && rune == 10) {
+            previousCr = false;
+            continue;
+          }
+          previousCr = rune == 13;
+          if (rune == 13) rune = 10;
+          if (rune == 9) {
+            final spaces = 4 - column % 4;
+            normalized.write(' ' * spaces);
+            column += spaces;
+          } else {
+            normalized.writeCharCode(rune);
+            column = rune == 10 ? 0 : column + 1;
+          }
+        }
+        sink.write(normalized);
+        await sink.flush();
+      }
+    } finally {
+      await sink.close();
+    }
+  }
 
   static Future<File> convert(File input) async {
     final path = input.absolute.path;

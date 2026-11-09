@@ -9,7 +9,6 @@ import 'package:path_provider/path_provider.dart';
 import 'screens/pdf_and_image_viewer.dart';
 import 'screens/reader_screen.dart';
 import 'services/storage_service.dart';
-import 'services/txt_to_epub_converter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -537,7 +536,6 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     'docx', 'doc', 'hwpx', 'hwp'
   ];
   static const _imageExts = ['jpg', 'jpeg', 'png', 'webp'];
-  static const _docConvertExts = ['txt'];
 
   String? _findFileRowPathAtGlobalPos(Offset globalPos) {
     for (final entry in _fileRowKeys.entries) {
@@ -1707,28 +1705,11 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     final displayName = _formatDisplayFileName(rawName);
     final ext = rawName.split('.').last.toLowerCase();
 
-    if (ext == 'epub' || ext == 'hwp' || ext == 'hwpx' || ext == 'docx' || ext == 'doc') {
+    if (ext == 'txt' || ext == 'epub' || ext == 'hwp' || ext == 'hwpx' || ext == 'docx' || ext == 'doc') {
       await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ReaderScreen(filePath: file.path, bookTitle: displayName),
-        ),
-      );
-    } else if (_docConvertExts.contains(ext)) {
-      final File epubFile;
-      try {
-        epubFile = await TxtToEpubConverter.convertDocumentToEpub(file);
-      } catch (error) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('문서를 열지 못했습니다: $error'), duration: const Duration(seconds: 8)),
-        );
-        return;
-      }
-      if (!mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ReaderScreen(filePath: epubFile.path, bookTitle: displayName),
         ),
       );
     } else if (ext == 'pdf') {

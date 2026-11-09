@@ -1,15 +1,19 @@
-FReader offline TXT support
+FReader offline TXT support — v48
 
 TXT bytes are decoded by Dart Unicode codecs and cp949_codec 1.0.2 (BSD-3-Clause).
-The local FReader adapter writes bounded EPUB chapters using archive 3.6.1 (MIT).
-They are displayed by the existing flutter_epub_viewer 2.2.1 (BSD-3-Clause),
-which embeds Epub.js 0.3 (the bundled build) (BSD-2-Clause). Epub.js is an EPUB renderer;
-TXT decoding/conversion is supplied by FReader, not by Epub.js itself.
+FReader lays out the decoded text into fixed paper pages using the existing
+Flutter text engine (TextPainter / CustomPainter). No new dependency is added.
+The bookshelf file name, file type and saved-reading identity remain TXT.
+Only private temporary UTF-8 page data is produced; no PDF or EPUB is created
+by the active TXT reader. The original TXT file is never modified.
 No account, remote document upload, payment, or runtime network download is required.
-The original TXT file is never modified.
 
-See the accompanying license files and PROVENANCE.json for upstream sources.
+Legacy compatibility / existing EPUB support:
+The older TXT-to-EPUB adapter is retained but is no longer used when opening TXT.
+It uses archive 3.6.1 (MIT), flutter_epub_viewer 2.2.1 (BSD-3-Clause), and its bundled
+Epub.js 0.3 build (BSD-2-Clause). These dependencies still support EPUB documents.
+See accompanying license files and PROVENANCE.json for upstream sources.
 
-FReader v46: flutter_epub_viewer 2.2.1 is now bundled under vendor/flutter_epub_viewer.
-The Android transport is patched to serve assets and EPUB chapters on the same local HTTPS origin.
+The local EPUB reader is bundled under vendor/flutter_epub_viewer. Its Android
+transport serves assets and EPUB chapters on the same local HTTPS origin.
 See that directory's LICENSE, FREADER_PATCH.txt and FREADER_PROVENANCE.json.

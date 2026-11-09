@@ -11,6 +11,7 @@ import '../services/storage_service.dart';
 import '../services/volume_key_service.dart';
 import 'pdf_and_image_viewer.dart';
 import '../widgets/hwp_viewer.dart';
+import '../widgets/txt_paged_viewer.dart';
 
 class _EpubMemoPainter extends CustomPainter {
   final List<MemoStroke> strokes;
@@ -84,9 +85,11 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final EpubController _epubController = EpubController();
   final HwpReaderController _hwpController = HwpReaderController();
-  bool get _isOfflineDocument => RegExp(r'\.(hwp|hwpx|docx|doc)$', caseSensitive: false).hasMatch(widget.filePath);
+  final TxtPageController _txtController = TxtPageController();
+  bool get _isTxt => widget.filePath.toLowerCase().endsWith('.txt');
+  bool get _isOfflineDocument => RegExp(r'\.(hwp|hwpx|docx|doc|txt)$', caseSensitive: false).hasMatch(widget.filePath);
   bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
-  String get _documentPositionPrefix => _isDocx
+  String get _documentPositionPrefix => _isTxt ? 'txt' : _isDocx
       ? 'docx'
       : widget.filePath.toLowerCase().endsWith('.doc') ? 'doc' : 'hwp';
   int _hwpPage = 0;
@@ -385,7 +388,6 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       'docx', 'doc', 'hwpx', 'hwp'
     ];
     const imageExts = ['jpg', 'jpeg', 'png', 'webp'];
-    const docConvertExts = ['txt'];
 
     final allFiles = <File>[];
     for (final e in dir.listSync()) {
@@ -439,7 +441,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       ),
     );
 
-    if (nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx' || nextExt == 'doc') {
+    if (nextExt == 'txt' || nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx' || nextExt == 'doc') {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -447,23 +449,6 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
         ),
       );
 
-    } else if (docConvertExts.contains(nextExt)) {
-      final File epubFile;
-      try {
-        epubFile = await TxtToEpubConverter.convertDocumentToEpub(nextFile);
-      } catch (error) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('문서를 열지 못했습니다: $error')),
-        );
-        return;
-      }
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ReaderScreen(filePath: epubFile.path, bookTitle: nextName),
-        ),
-      );
     } else if (nextExt == 'pdf') {
       Navigator.pushReplacement(
         context,
@@ -525,7 +510,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       // Its CFI and annotations remain stored under the old file; never treat an
       // EPUB location as a HWP physical page or overwrite the old metadata.
       final legacyPath = widget.filePath.replaceFirst(
-        RegExp(r'\.(hwp|hwpx|docx|doc)$', caseSensitive: false), '_v25_converted.epub');
+        RegExp(r'\.(hwp|hwpx|docx|doc|txt)$', caseSensitive: false), '_v25_converted.epub');
       savedProg = await StorageService.getProgress(legacyPath);
     }
     final twoPage = await StorageService.getTwoPageLandscape();
@@ -576,31 +561,22 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   }
 
   void _readerNext() {
-    if (_isOfflineDocument) { _hwpController.next(); } else { _epubController.next(); }
+    if (_isTxt) { _txtController.next(); } else if (_isOfflineDocument) { _hwpController.next(); } else { _epubController.next(); }
   }
 
   void _readerPrevious() {
-    if (_isOfflineDocument) { _hwpController.previous(); } else { _epubController.prev(); }
+    if (_isTxt) { _txtController.previous(); } else if (_isOfflineDocument) { _hwpController.previous(); } else { _epubController.prev(); }
   }
 
   void _readerProgress(double value) {
-    if (_isOfflineDocument) { _hwpController.toProgress(value); } else { _epubController.toProgressPercentage(value); }
+    if (_isTxt) { _txtController.toProgress(value); } else if (_isOfflineDocument) { _hwpController.toProgress(value); } else { _epubController.toProgressPercentage(value); }
   }
 
   void _readerDisplay(String position) {
-    if (_isOfflineDocument) { _hwpController.display(position); } else { _epubController.display(cfi: position); }
+    if (_isTxt) { _txtController.display(position); } else if (_isOfflineDocument) { _hwpController.display(position); } else { _epubController.display(cfi: position); }
   }
 
-  Widget _buildHwpViewer(bool isLandscape) => HwpViewer(
-    key: ValueKey('document:${widget.filePath}'),
-    filePath: widget.filePath,
-    controller: _hwpController,
-    initialPosition: _currentCfi ?? _initialCfi,
-    initialProgress: _initialProgress,
-    theme: _epubBgTheme,
-    spread: isLandscape && _enableTwoPageInLandscape,
-    rtl: _isMangaRtlMode,
-    onLoaded: (pageCount) {
+  void _onDocumentLoaded(int pageCount) {
       if (!mounted) return;
       setState(() {
         _readerReady = true;
@@ -610,8 +586,9 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
           href: '$_documentPositionPrefix:$index', id: '$_documentPositionPrefix:$index', subitems: const [],
         ));
       });
-    },
-    onLocation: (page, pageCount, position, progress) async {
+  }
+
+  Future<void> _onDocumentLocation(int page, int pageCount, String position, double progress) async {
       if (!mounted) return;
       final relocation = ++_hwpRelocation;
       setState(() {
@@ -629,10 +606,39 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       await StorageService.saveProgress(widget.filePath, progress);
       final strokes = await StorageService.getEpubLocationStrokes(widget.filePath, position);
       if (mounted && relocation == _hwpRelocation) setState(() => _epubStrokes = strokes);
-    },
-    onError: _handleReaderLoadError,
-    onCancelled: () { if (mounted) Navigator.of(context).pop(); },
-  );
+  }
+
+  Widget _buildHwpViewer(bool isLandscape) {
+    if (_isTxt) {
+      return TxtPagedViewer(
+        key: ValueKey('text:${widget.filePath}'),
+        filePath: widget.filePath,
+        controller: _txtController,
+        initialPosition: _currentCfi ?? _initialCfi,
+        initialProgress: _initialProgress,
+        theme: _epubBgTheme,
+        spread: isLandscape && _enableTwoPageInLandscape,
+        rtl: _isMangaRtlMode,
+        onLoaded: _onDocumentLoaded,
+        onLocation: _onDocumentLocation,
+        onError: _handleReaderLoadError,
+      );
+    }
+    return HwpViewer(
+      key: ValueKey('document:${widget.filePath}'),
+      filePath: widget.filePath,
+      controller: _hwpController,
+      initialPosition: _currentCfi ?? _initialCfi,
+      initialProgress: _initialProgress,
+      theme: _epubBgTheme,
+      spread: isLandscape && _enableTwoPageInLandscape,
+      rtl: _isMangaRtlMode,
+      onLoaded: _onDocumentLoaded,
+      onLocation: _onDocumentLocation,
+      onError: _handleReaderLoadError,
+      onCancelled: () { if (mounted) Navigator.of(context).pop(); },
+    );
+  }
 
   void _turnNext() {
     setState(() => _activeStrokePoints.clear());
