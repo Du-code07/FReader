@@ -732,10 +732,42 @@ jobs:
           print('Verified offline PPT/PPTX 0.89.8 engines, v54 animation steps and license notices.')
           PYVERIFY
 
+      - name: 4j. Verify offline Excel engines
+        shell: bash
+        run: |
+          python3 - <<'PYVERIFY'
+          import hashlib
+          import json
+          from pathlib import Path
+          root = Path('assets/xlsx')
+          provenance = json.loads((root / 'PROVENANCE.json').read_text())
+          for folder in ('engine', 'legacy'):
+              metadata = provenance[folder]
+              if metadata.get('version') != '0.89.8':
+                  raise SystemExit(f'Wrong Excel engine version: {folder}. Upload assets from the same release ZIP.')
+              for name, expected in metadata['artifacts'].items():
+                  asset = root / folder / name
+                  if not asset.is_file():
+                      raise SystemExit(f'Missing Excel asset: {asset}. Upload the complete assets folder.')
+                  data = asset.read_bytes()
+                  if len(data) != expected['bytes'] or hashlib.sha256(data).hexdigest() != expected['sha256']:
+                      raise SystemExit(f'Wrong Excel asset: {asset}. Replace it from the release ZIP.')
+              for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
+                  if not (root / folder / name).is_file():
+                      raise SystemExit(f'Missing Excel license notice: {folder}/{name}')
+          if provenance.get('integrationRevision') != 55:
+              raise SystemExit('Wrong Excel viewer integration. Upload the complete assets/xlsx folder from v55.')
+          for name, expected in provenance['integrationArtifacts'].items():
+              asset = root / name
+              if not asset.is_file() or hashlib.sha256(asset.read_bytes()).hexdigest() != expected['sha256']:
+                  raise SystemExit(f'Missing or outdated Excel viewer file: {asset}. Upload assets from the same ZIP.')
+          print('Verified offline XLSX/XLSM/XLS engines, mobile adapter and license notices.')
+          PYVERIFY
+
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
           set -euo pipefail
-          BUILD_NUM=$((135 + ${{ github.run_number }}))
+          BUILD_NUM=$((136 + ${{ github.run_number }}))
           flutter pub get
           # Regression helpers are optional repository files, not app assets.
           # Run them when uploaded; a failed test still stops the build.
