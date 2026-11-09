@@ -187,6 +187,12 @@ function loadBook(data, opts) {
     allowScriptedContent: allowScriptedContent,
     defaultDirection: direction
   });
+  // epub.js emits displayerror for chapter/iframe failures without rejecting
+  // its pending display promise. Listening only to Promise.catch leaves a
+  // permanently blank reader in that case.
+  rendition.on('displayerror', function (error) {
+    if (loadToken === currentLoadToken) reportLoadError(error);
+  });
 
   // Apply initial theme
   updateTheme(backgroundColor, foregroundColor, customCss);
@@ -209,6 +215,17 @@ function loadBook(data, opts) {
   } else {
     displayed = rendition.display()
   }
+
+  // A stale bookmark must not leave the opening promise rejected and the
+  // reader blank. Recover to the first readable section once, or report the
+  // actual chapter error immediately instead of waiting for a watchdog.
+  displayed = Promise.resolve(displayed).catch(function (error) {
+    if (loadToken !== currentLoadToken) return;
+    if (cfi) return rendition.display();
+    throw error;
+  }).catch(function (error) {
+    if (loadToken === currentLoadToken) reportLoadError(error);
+  });
 
   // Setup blocking immediately after rendition is created
   // Use setTimeout to ensure rendition object is fully initialized
@@ -1662,9 +1679,17 @@ function loadBook(data, opts) {
   updateTheme(backgroundColor, foregroundColor);
 }
 
-window.addEventListener("flutterInAppWebViewPlatformReady", function (event) {
-  window.flutter_inappwebview.callHandler('readyToLoad');
-});
+var epubReadySent = false;
+function notifyEpubReady() {
+  if (epubReadySent || !window.flutter_inappwebview || typeof window.flutter_inappwebview.callHandler !== 'function') return;
+  epubReadySent = true;
+  try {
+    Promise.resolve(window.flutter_inappwebview.callHandler('readyToLoad')).catch(function () { epubReadySent = false; });
+  } catch (_) { epubReadySent = false; }
+}
+window.addEventListener('flutterInAppWebViewPlatformReady', notifyEpubReady);
+// PlatformReady can precede this deferred script on some Android WebViews.
+notifyEpubReady();
 
 // Global touch event handlers for iOS compatibility
 // On iOS, touch events in iframes may not fire, so we also listen on the main document

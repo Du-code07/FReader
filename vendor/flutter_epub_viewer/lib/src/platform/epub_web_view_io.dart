@@ -206,6 +206,10 @@ class _IoEpubViewState extends State<_IoEpubView> {
             action: PermissionResponseAction.GRANT,
           );
         },
+        onLoadStop: (controller, url) async {
+          await controller.evaluateJavascript(source:
+            'if (typeof notifyEpubReady === "function") notifyEpubReady();');
+        },
         shouldInterceptRequest: EpubBookServer.usesInterception
             ? (controller, request) async {
                 final served = await EpubBookServer.instance.intercept(

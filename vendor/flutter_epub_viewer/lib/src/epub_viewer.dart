@@ -497,6 +497,7 @@ class _EpubViewerState extends State<EpubViewer> {
     });
 
     controller.addHandler("readyToLoad", (data) {
+      if (_readyToLoad) return;
       _readyToLoad = true;
       loadBook();
     });

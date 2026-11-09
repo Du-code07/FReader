@@ -31,7 +31,7 @@
     },
     "lib/src/epub_viewer.dart": {
       "upstream_sha256": "227003b0a4a3988b13a213d5582d99bc8377ef1269807349afc3be8cfc85e147",
-      "vendored_sha256": "f38026101d9bdecb4281fa947c297604fdddb14a58be95d3825238ff24c59639"
+      "vendored_sha256": "3f24cb51a4edc8348b11c75ece0bc122a2809c4b6bc274c72244b68e1b1e7ff2"
     },
     "lib/src/epub_data_loader.dart": {
       "upstream_sha256": "71c90ef50dacfd68b450882dc82584043d225ad4820117c392059be5db37220a",
@@ -55,7 +55,7 @@
     },
     "lib/assets/webpage/html/epubView.js": {
       "upstream_sha256": "0b19d487a5739e97c5ed8073b860e2c8b986d43dbf26c42a300fba8074e38cb1",
-      "vendored_sha256": "0b19d487a5739e97c5ed8073b860e2c8b986d43dbf26c42a300fba8074e38cb1"
+      "vendored_sha256": "89452d5c6069db5241a446689b8a68efae2736a9b35a2b6a6436dd1c9f6fcf46"
     },
     "lib/assets/webpage/html/swipe.html": {
       "upstream_sha256": "cbbacbfd24aa0b686091b751af9c4481a9ba63a5168679f1e7bf66b8ffd58b07",
@@ -99,7 +99,7 @@
     },
     "lib/src/platform/epub_web_view_io.dart": {
       "upstream_sha256": "cde3ab08b754b239b2f2dd0c84f1fdb75f89f427c718f0dc1d7d963369e08eb2",
-      "vendored_sha256": "e251fd82ed4a834884c28946bc1c4c092b14a3079401c9c4eeffa966a2b70250"
+      "vendored_sha256": "66bd504e572da6b8f3d46175af982dba9babe825e7c0abc08d2bb489a018248d"
     },
     "lib/src/platform/epub_web_view_web.dart": {
       "upstream_sha256": "ece16245c81cdfd86eb9bf6bb5b2fe41bb73c7d532d1e460c19bca03cfb3ca25",
