@@ -1183,6 +1183,19 @@ var X = class e {
 		if (this._destroyed) throw Error("Presentation destroyed");
 		return i;
 	}
+	// FReader: expose a bounded metadata snapshot for read-only build steps.
+	async getFReaderSlideMetadata(index) {
+		this._assertSlideIndex(index);
+		await this._waitForSlide(index);
+		if (this._destroyed || !this._slides) throw Error("Presentation destroyed");
+		return this._slides.withSlide(index, slide => ({
+			partName: slide.partName,
+			elements: slide.elements.map((element, i) => ({
+				id: element.id, type: element.type,
+				origin: slide.elementSources?.[i]?.origin ?? "unknown"
+			}))
+		}));
+	}
 	async renderSlide(e, t, n = {}) {
 		this._assertResourceHealthy();
 		try {
@@ -1195,6 +1208,14 @@ var X = class e {
 			let c = b(e) ? e.ownerDocument.fonts : typeof document < "u" ? document.fonts : null, { routes: u, installed: d } = await this._officeRoutesForRequests(s, c);
 			await i.withSlide(t, (t) => {
 				if (this._destroyed) throw Error("Presentation destroyed");
+				// FReader: filter this render only. The cached source slide stays intact.
+				if (n.freaderHiddenShapeIds?.size) {
+					const keep = t.elements.map((element, index) =>
+						t.elementSources?.[index]?.origin !== "slide" ||
+						!n.freaderHiddenShapeIds.has(String(element.id)));
+					t = { ...t, elements: t.elements.filter((_, i) => keep[i]),
+						elementSources: t.elementSources?.filter((_, i) => keep[i]) };
+				}
 				return this._assertResourceHealthy(), p(e, t, r.slideWidth, r.slideHeight, {
 					width: o,
 					dpr: a,

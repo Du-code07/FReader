@@ -5,7 +5,7 @@
     "license": "MIT",
     "npmIntegrity": "sha512-t5dJ+pLGUTmjDjGNV9wE1cdRqFg5vDSVZN7I7okMSiMNnCR9tdk0P7O9yZ8EtXgtV2rToF7E4L6Lbca7yt+4+w==",
     "npmTarball": "https://registry.npmjs.org/@silurus/ooxml/-/ooxml-0.89.8.tgz",
-    "modifications": "ES module .mjs filenames/references renamed to .js for Android asset MIME handling. Legacy companion import points to the bundled engine; no parsing or rendering logic changed.",
+    "modifications": "ES module .mjs filenames/references renamed to .js for Android asset MIME handling. v54 adds getFReaderSlideMetadata and per-render slide-origin visibility filtering to pptx-Ci1Y9SS_.js; source models and WASM parsers are unchanged. See engine/FREADER_MODIFICATIONS.txt.",
     "artifacts": {
       "abort-JztSoyw2.js": {
         "upstreamName": "abort-JztSoyw2.js",
@@ -129,8 +129,8 @@
       },
       "pptx-Ci1Y9SS_.js": {
         "upstreamName": "pptx-Ci1Y9SS_.js",
-        "bytes": 190403,
-        "sha256": "7aa1538ee0417b6dc0b9ea0fa6e3dcda96ef28c7821eb0548cc0ac24f3ff443b",
+        "bytes": 191337,
+        "sha256": "d2646c7894aa0499b2e626e007dc15e7e01661f24f07840864a5af65f71d8042",
         "upstreamSha256": "7aa1538ee0417b6dc0b9ea0fa6e3dcda96ef28c7821eb0548cc0ac24f3ff443b"
       },
       "pptx-source-worker.js": {
@@ -275,6 +275,33 @@
         "sha256": "49660f268fb84b432228ef3b2b7d491afd9d92875df25dc0024965e046e09b85",
         "upstreamSha256": "42e45470786a75bd942c5c06bcb2622830894b1490d4bf89aaa89a7cfeae0c58"
       }
+    }
+  },
+  "integrationRevision": 54,
+  "integrationArtifacts": {
+    "reader.js": {
+      "bytes": 16013,
+      "sha256": "c5236dfcf09a4c46a9f07276c3b9c90798ee0fb3a7404006957a7d5b635f163e"
+    },
+    "animation_steps.js": {
+      "bytes": 5923,
+      "sha256": "2019313f4579973e4686b020f2b0fb8ddb11ce4dd4837d1faa4fe537f082d2c2"
+    },
+    "index.html": {
+      "bytes": 679,
+      "sha256": "c0fb4bc2438d1e75f5414311d579f4fa19e51578ec22e756ec6969a32c88cebe"
+    },
+    "reader.css": {
+      "bytes": 670,
+      "sha256": "f4ef2743ee39fbb8ead2085a261712f5a13376564f728087e172d496c14590c6"
+    },
+    "THIRD_PARTY_NOTICES.txt": {
+      "bytes": 2125,
+      "sha256": "26a5c7bde40a3ae683dd92db8bcd093a36a037adcafa3207a5326662e8711648"
+    },
+    "engine/FREADER_MODIFICATIONS.txt": {
+      "bytes": 995,
+      "sha256": "4bbf27ac1cb1203d18cbc9ae60c371e476b99335d926d86f43164e90f2b9545c"
     }
   }
 }

@@ -1,4 +1,4 @@
-FReader PowerPoint viewer (v53)
+FReader PowerPoint viewer (v54)
 
 Office Open XML Viewer: @silurus/ooxml 0.89.8
 Legacy PowerPoint parser: @silurus/ooxml-legacy-office 0.89.8
@@ -26,11 +26,15 @@ FReader integration changes:
 - ES module .mjs extensions and references changed to .js for Android assets.
 - Legacy companion import resolved to the bundled engine instead of npm.
 - Offline Flutter bridge and fixed-slide display supplied in reader.js.
-- Original parsing/rendering logic in engine/ and legacy/ is unchanged.
+- v54 adds read-only metadata access and per-render visibility filtering in
+  engine/pptx-Ci1Y9SS_.js. See engine/FREADER_MODIFICATIONS.txt.
+- animation_steps.js reads PPTX timing and produces manual build snapshots.
+- The original WASM parsers and legacy parser are unchanged.
 PROVENANCE.json records package versions, npm integrity and file checksums.
 
 The packaged reader runs locally, with Google Fonts disabled and a restrictive
 Content-Security-Policy. It does not upload the opened presentation.
-Supported static slides are shown in the existing FReader viewer UI. Animations
-and transitions are not played. Legacy PPT support is experimental and reports
+Slides are shown in the existing FReader viewer UI. v54 supports manual
+PPTX whole-object entrance/exit build snapshots. Motion, timing, transitions,
+shape-click triggers and partial text/chart builds are not played. Legacy PPT support is experimental and reports
 unsupported structures; it does not promise complete PowerPoint fidelity.
