@@ -1,0 +1,36 @@
+FReader PowerPoint viewer (v53)
+
+Office Open XML Viewer: @silurus/ooxml 0.89.8
+Legacy PowerPoint parser: @silurus/ooxml-legacy-office 0.89.8
+Project: https://github.com/yukiyokotani/office-open-xml-viewer
+License: MIT
+
+Complete upstream copyright and license notices are retained in:
+  engine/LICENSE
+  engine/THIRD_PARTY_NOTICES.md
+  legacy/LICENSE
+  legacy/THIRD_PARTY_NOTICES.md
+
+The transitive notices include the MIT/Apache-2.0/Unicode/other permissive
+components actually bundled upstream. Optional equation rendering includes
+MathJax and its STIX font assets; see engine/THIRD_PARTY_NOTICES.md for their
+complete notices. Retain these files when redistributing the application.
+
+The reader reuses the existing Noto Sans KR and Noto Serif KR font assets at
+../hwp/fonts/. Their SIL Open Font License and copyright notices remain there.
+No proprietary Microsoft fonts are bundled. Device fonts are preferred when
+available; otherwise these free fonts are substituted. Layout can consequently
+differ from Microsoft PowerPoint.
+
+FReader integration changes:
+- ES module .mjs extensions and references changed to .js for Android assets.
+- Legacy companion import resolved to the bundled engine instead of npm.
+- Offline Flutter bridge and fixed-slide display supplied in reader.js.
+- Original parsing/rendering logic in engine/ and legacy/ is unchanged.
+PROVENANCE.json records package versions, npm integrity and file checksums.
+
+The packaged reader runs locally, with Google Fonts disabled and a restrictive
+Content-Security-Policy. It does not upload the opened presentation.
+Supported static slides are shown in the existing FReader viewer UI. Animations
+and transitions are not played. Legacy PPT support is experimental and reports
+unsupported structures; it does not promise complete PowerPoint fidelity.
