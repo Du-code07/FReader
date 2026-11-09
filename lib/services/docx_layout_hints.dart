@@ -158,6 +158,9 @@ class DocxLayoutHints {
         final runs = <Map<String, Object>>[];
         final breaks = <int>[];
         final cached = <int>[];
+        final drawingBreaks = <Map<String, Object>>[];
+        var drawingCount = 0;
+        bool? pendingDrawingBreak;
         for (final run in p.findAllElements('r', namespace: _w)) {
           // Do not count nested text-box paragraphs a second time.
           if (run.ancestors
@@ -174,12 +177,28 @@ class DocxLayoutHints {
             switch (n.name.local) {
               case 't':
                 text.write(n.innerText);
+                if (n.innerText.isNotEmpty) pendingDrawingBreak = null;
               case 'tab':
                 text.write('\t');
+                pendingDrawingBreak = null;
               case 'br':
-                if (_attr(n, 'type') == 'page') breaks.add(text.length);
+                if (_attr(n, 'type') == 'page') {
+                  breaks.add(text.length);
+                  pendingDrawingBreak = false;
+                }
               case 'lastRenderedPageBreak':
                 cached.add(text.length);
+                pendingDrawingBreak ??= true;
+              case 'drawing':
+              case 'pict':
+                if (pendingDrawingBreak != null) {
+                  drawingBreaks.add({
+                    'index': drawingCount,
+                    'cached': pendingDrawingBreak,
+                  });
+                }
+                drawingCount++;
+                pendingDrawingBreak = null;
             }
           }
           final rp = _child(run, 'rPr');
@@ -201,6 +220,8 @@ class DocxLayoutHints {
           'runs': runs,
           'breaks': breaks,
           'cachedBreaks': cached,
+          'drawingCount': drawingCount,
+          'drawingBreaks': drawingBreaks,
         });
       }
       final tables = <Map<String, Object>>[];
