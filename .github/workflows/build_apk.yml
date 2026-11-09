@@ -601,7 +601,7 @@ jobs:
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
           set -euo pipefail
-          BUILD_NUM=$((129 + ${{ github.run_number }}))
+          BUILD_NUM=$((130 + ${{ github.run_number }}))
           flutter pub get
           # Regression helpers are optional repository files, not app assets.
           # Run them when uploaded; a failed test still stops the build.
