@@ -1,7 +1,7 @@
 name: my_ebook_reader
-description: Fast, lightweight Android eBook, PDF, Word, HWP, TXT, and Comic Reader.
+description: Fast, lightweight Android eBook, PDF, Word, PowerPoint, HWP, TXT, and Comic Reader.
 publish_to: 'none'
-version: 2.46.0+133
+version: 2.47.0+134
 
 environment:
   sdk: '>=3.8.0 <4.0.0'
@@ -34,3 +34,6 @@ flutter:
     - assets/docx/engine/
     - assets/docx/metafile/
     - assets/docx/fonts/
+    - assets/ppt/
+    - assets/ppt/engine/
+    - assets/ppt/legacy/

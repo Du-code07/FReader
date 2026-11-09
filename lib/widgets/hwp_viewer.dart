@@ -56,14 +56,16 @@ class _HwpViewerState extends State<HwpViewer> {
   bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
   bool get _isDoc => widget.filePath.toLowerCase().endsWith('.doc');
   bool get _isWord => _isDocx || _isDoc;
-  String get _format => _isDocx
+  bool get _isPresentation => RegExp(r'\.pptx?$', caseSensitive: false).hasMatch(widget.filePath);
+  String get _presentationFormat => widget.filePath.toLowerCase().endsWith('.pptx') ? 'pptx' : 'ppt';
+  String get _format => _isPresentation ? _presentationFormat.toUpperCase() : _isDocx
       ? 'DOCX'
       : _isDoc
       ? 'DOC'
       : 'HWP';
   String get _entry =>
-      '$_origin/assets/flutter_assets/assets/${_isWord ? 'docx' : 'hwp'}/index.html';
-  String get _jsObject => _isWord ? 'freaderDocx' : 'freaderHwp';
+      '$_origin/assets/flutter_assets/assets/${_isPresentation ? 'ppt' : _isWord ? 'docx' : 'hwp'}/index.html';
+  String get _jsObject => _isPresentation ? 'freaderPpt' : _isWord ? 'freaderDocx' : 'freaderHwp';
   Map<String, Object> _docxLayout = {};
   static const _maxBytes = 256 * 1024 * 1024;
   static const _chunkBytes = 192 * 1024;
@@ -84,6 +86,7 @@ class _HwpViewerState extends State<HwpViewer> {
     'position': widget.initialPosition,
     'progress': widget.initialProgress,
     if (_isWord) 'format': _isDoc ? 'doc' : 'docx',
+    if (_isPresentation) 'format': _presentationFormat,
     if (_isDocx) 'docxLayout': _docxLayout,
   };
 

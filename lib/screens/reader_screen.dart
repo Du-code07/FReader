@@ -87,9 +87,12 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   final HwpReaderController _hwpController = HwpReaderController();
   final TxtPageController _txtController = TxtPageController();
   bool get _isTxt => widget.filePath.toLowerCase().endsWith('.txt');
-  bool get _isOfflineDocument => RegExp(r'\.(hwp|hwpx|docx|doc|txt)$', caseSensitive: false).hasMatch(widget.filePath);
+  bool get _isOfflineDocument => RegExp(r'\.(hwp|hwpx|docx|doc|txt|ppt|pptx)$', caseSensitive: false).hasMatch(widget.filePath);
   bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
-  String get _documentPositionPrefix => _isTxt ? 'txt' : _isDocx
+  bool get _isPresentation => RegExp(r'\.pptx?$', caseSensitive: false).hasMatch(widget.filePath);
+  String get _documentPositionPrefix => _isPresentation
+      ? (widget.filePath.toLowerCase().endsWith('.pptx') ? 'pptx' : 'ppt')
+      : _isTxt ? 'txt' : _isDocx
       ? 'docx'
       : widget.filePath.toLowerCase().endsWith('.doc') ? 'doc' : 'hwp';
   int _hwpPage = 0;
@@ -385,7 +388,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     final dir = await getApplicationDocumentsDirectory();
     const supportedExts = [
       'epub', 'txt', 'pdf', 'jpg', 'jpeg', 'png', 'webp', 'cbz',
-      'docx', 'doc', 'hwpx', 'hwp'
+      'docx', 'doc', 'hwpx', 'hwp', 'ppt', 'pptx'
     ];
     const imageExts = ['jpg', 'jpeg', 'png', 'webp'];
 
@@ -441,7 +444,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       ),
     );
 
-    if (nextExt == 'txt' || nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx' || nextExt == 'doc') {
+    if (nextExt == 'txt' || nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx' || nextExt == 'doc' || nextExt == 'ppt' || nextExt == 'pptx') {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -505,7 +508,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     final savedCfi = await StorageService.getLastPosition(widget.filePath);
     final prevCfi = await StorageService.getPreviousPosition(widget.filePath);
     var savedProg = await StorageService.getProgress(widget.filePath);
-    if (_isOfflineDocument && savedCfi == null) {
+    if (_isOfflineDocument && !_isPresentation && savedCfi == null) {
       // Preserve approximate reading progress from the previous EPUB conversion.
       // Its CFI and annotations remain stored under the old file; never treat an
       // EPUB location as a HWP physical page or overwrite the old metadata.
