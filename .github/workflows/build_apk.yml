@@ -552,7 +552,7 @@ jobs:
               content = (root / name).read_bytes()
               assert len(content) == expected['bytes'], f'Wrong DOCX asset size: {name}'
               assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong DOCX asset checksum: {name}'
-          for name in ['index.html', 'reader.js', 'reader.css', 'worker.js', 'rtf_images.js', 'rtf_layout.js', 'THIRD_PARTY_NOTICES.txt']:
+          for name in ['index.html', 'reader.js', 'reader.css', 'docx_layout.js', 'worker.js', 'rtf_images.js', 'rtf_layout.js', 'THIRD_PARTY_NOTICES.txt']:
               assert (root.parent / name).is_file(), f'Missing DOCX asset: {name}'
           root = Path('assets/docx/metafile')
           provenance = json.loads((root / 'PROVENANCE.json').read_text())
@@ -569,13 +569,37 @@ jobs:
               assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong punctuation font checksum: {name}'
           for name in provenance['licenseNotices']:
               assert (root / name).is_file(), f'Missing font license: {name}'
+          for expected in json.loads((root / 'LATIN_PROVENANCE.json').read_text())['files']:
+              content = (root / expected['file']).read_bytes()
+              assert len(content) == expected['bytes']
+              assert hashlib.sha256(content).hexdigest() == expected['sha256']
           print('Verified pinned OpenDocument.core 7.7.0, metafile converter, RTF reader and offline fonts.')
+          PYVERIFY
+
+      - name: 4h. Verify TXT open-source notices
+        shell: bash
+        run: |
+          python3 - <<'PYVERIFY'
+          import hashlib
+          import json
+          from pathlib import Path
+          root = Path('assets/txt')
+          metadata = json.loads((root / 'PROVENANCE.json').read_text())
+          for name, expected in metadata['files'].items():
+              content = (root / name).read_bytes()
+              assert len(content) == expected['bytes'], f'Wrong TXT notice size: {name}'
+              assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong TXT notice checksum: {name}'
+          assert Path('lib/services/txt_reader_service.dart').is_file()
+          assert Path('tool/verify_txt_reader.dart').is_file()
+          print('Verified offline TXT service and open-source notices.')
           PYVERIFY
 
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
-          BUILD_NUM=$((125 + ${{ github.run_number }}))
+          BUILD_NUM=$((126 + ${{ github.run_number }}))
           flutter pub get
+          dart run tool/verify_txt_reader.dart
+          dart run tool/verify_docx_layout.dart
           flutter build apk --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM
           flutter build appbundle --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM
 
