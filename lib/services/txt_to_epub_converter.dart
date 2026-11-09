@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 import 'txt_reader_service.dart';
+import 'epub_validation.dart';
 
 class _DocStyleInfo {
   double fontSizePt;
@@ -1662,45 +1663,7 @@ class TxtToEpubConverter {
 
   /// Read the package/spine before mounting a WebView. Do not treat ZIP files,
   /// damaged exports or missing chapters as successfully loaded blank books.
-  static Future<void> validateEpub(File file) async {
-    final archive = ZipDecoder().decodeBytes(await file.readAsBytes());
-    String xmlText(String name) {
-      final entry = archive.findFile(name);
-      if (entry == null || !entry.isFile) {
-        throw FormatException('EPUB 내부 파일이 없습니다: $name');
-      }
-      return utf8.decode(entry.content as List<int>);
-    }
-    final container = XmlDocument.parse(xmlText('META-INF/container.xml'));
-    final roots = container.descendants.whereType<XmlElement>()
-        .where((e) => e.name.local == 'rootfile');
-    if (roots.isEmpty) throw const FormatException('EPUB rootfile이 없습니다.');
-    final opfPath = roots.first.getAttribute('full-path');
-    if (opfPath == null || opfPath.isEmpty) {
-      throw const FormatException('EPUB 패키지 경로가 없습니다.');
-    }
-    final opf = XmlDocument.parse(xmlText(opfPath));
-    final items = <String, String>{};
-    for (final item in opf.descendants.whereType<XmlElement>()
-        .where((e) => e.name.local == 'item')) {
-      final id = item.getAttribute('id');
-      final href = item.getAttribute('href');
-      if (id != null && href != null) items[id] = href;
-    }
-    final spine = opf.descendants.whereType<XmlElement>()
-        .where((e) => e.name.local == 'itemref').toList();
-    if (spine.isEmpty) throw const FormatException('EPUB 본문 목록이 비어 있습니다.');
-    final base = Uri(path: '/$opfPath');
-    for (final ref in spine) {
-      final href = items[ref.getAttribute('idref')];
-      if (href == null) throw const FormatException('EPUB 본문 참조가 올바르지 않습니다.');
-      final uri = base.resolve(href);
-      final path = Uri.decodeComponent(uri.path).replaceFirst(RegExp(r'^/'), '');
-      if (uri.hasScheme || archive.findFile(path) == null) {
-        throw FormatException('EPUB 본문을 찾을 수 없습니다: $href');
-      }
-    }
-  }
+  static Future<void> validateEpub(File file) => EpubValidation.validate(file);
 
   static Future<File> convertDocumentToEpub(File inputFile) async {
     final ext = inputFile.path.split('.').last.toLowerCase();

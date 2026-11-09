@@ -1,4 +1,5 @@
 // Read-only OOXML layout supplements. No text, images or source bytes are removed.
+import { replaceDocxChart } from './docx_charts.js';
 const number = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
 const pt = v => `${number(v) / 20}pt`;
 const val = (p, k) => p?.[k]?.val;
@@ -146,6 +147,32 @@ function applyTables(root, hints) {
       if (tr.cells.length !== cells.length) return;
       cells.forEach((cell, j) => {
         const td = tr.cells[j], cp = cell.props;
+        // Core drops bottom/right edges when a neighbouring cell declares nil.
+        // Restore all four OOXML edges so CSS collapse can resolve the shared
+        // border, including the last row of a vertically merged cell.
+        const tableBorders = tp.tblBorders?.children || {};
+        let endProps = cp;
+        if (td.rowSpan > 1) {
+          const sourceIndex = row.cells.indexOf(cell);
+          const start = row.cells.slice(0, sourceIndex).reduce((s, c) => s + number(c.props.gridSpan?.val, 1), 0);
+          let col = 0;
+          for (const c of h.rows[Math.min(n + td.rowSpan - 1, h.rows.length - 1)].cells) {
+            if (col === start) { endProps = c.props; break; }
+            col += number(c.props.gridSpan?.val, 1);
+          }
+        }
+        for (const side of ['top', 'right', 'bottom', 'left']) {
+          const cellBorders = (side === 'bottom' ? endProps : cp).tcBorders?.children || {};
+          const outer = side === 'top' ? n === 0 : side === 'bottom' ? n + td.rowSpan >= rows.length
+            : side === 'left' ? j === 0 : j === cells.length - 1;
+          const border = cellBorders[side] || cellBorders[side === 'left' ? 'start' : side === 'right' ? 'end' : side]
+            || tableBorders[outer ? side : ['left', 'right'].includes(side) ? 'insideV' : 'insideH'];
+          if (!border) continue;
+          const style = ['nil', 'none'].includes(border.val) ? 'none'
+            : ({ double: 'double', dotted: 'dotted', dashed: 'dashed', dashSmallGap: 'dashed' }[border.val] || 'solid');
+          td.style['border' + side[0].toUpperCase() + side.slice(1)] = style === 'none' ? '0 none'
+            : `${Math.max(.125, number(border.sz, 4) / 8)}pt ${style} ${/^[0-9a-f]{6}$/i.test(border.color || '') ? '#' + border.color : '#000'}`;
+        }
         const mar = { ...(tp.tblCellMar?.children || {}), ...(cp.tcMar?.children || {}) };
         for (const side of ['top', 'right', 'bottom', 'left']) {
           const m = mar[side] || mar[side === 'left' ? 'start' : side === 'right' ? 'end' : side];
@@ -232,6 +259,7 @@ export function applyDocxLayout(root, layout) {
     const images = [...p.querySelectorAll('img')];
     if (images.length === hint.drawingCount) for (const drawing of hint.drawings || []) {
       const img = images[drawing.index], frame = img?.parentElement;
+      if (drawing.chartXml && img) replaceDocxChart(img, drawing, layout.themeColors || {});
       if (drawing.kind === 'anchor' && frame?.localName === 'div' &&
           frame.children.length === 1 && frame.firstElementChild === img)
         frame.dataset.docxAnchor = JSON.stringify(drawing);

@@ -10,6 +10,8 @@ class DocxLayoutHints {
   static const _a = 'http://schemas.openxmlformats.org/drawingml/2006/main';
   static const _wp =
       'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+  static const _c = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
+  static const _r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
   static Map<String, Object> _drawing(XmlElement node, int index) {
     final anchor = node.findAllElements('anchor', namespace: _wp).firstOrNull;
@@ -114,6 +116,22 @@ class DocxLayoutHints {
 
       final doc = part('word/document.xml');
       if (doc == null) return {};
+      final chartParts = <String, String>{};
+      for (final rel in part('word/_rels/document.xml.rels')?.rootElement.childElements ?? <XmlElement>[]) {
+        if (rel.getAttribute('TargetMode') == 'External' ||
+            !(rel.getAttribute('Type') ?? '').endsWith('/chart')) continue;
+        final target = Uri.parse('word/document.xml').resolve(rel.getAttribute('Target') ?? '');
+        if (target.hasScheme || target.hasAuthority) continue;
+        final name = Uri.decodeComponent(target.path).replaceFirst(RegExp(r'^/'), '');
+        final id = rel.getAttribute('Id');
+        try {
+          final chart = part(name);
+          if (id != null && chart != null) chartParts[id] = chart.toXmlString();
+        } catch (_) {
+          // A damaged/unsupported chart must not disable the document's other
+          // paragraph, table and image hints.
+        }
+      }
       final styles = part('word/styles.xml');
       final theme = part('word/theme/theme1.xml');
       final settings = part('word/settings.xml');
@@ -176,6 +194,13 @@ class DocxLayoutHints {
       final dp = _props(_child(_child(defaults, 'pPrDefault'), 'pPr'));
       final dr = _props(_child(_child(defaults, 'rPrDefault'), 'rPr'));
       final themeFonts = <String, Object>{};
+      final themeColors = <String, String>{};
+      final scheme = theme?.findAllElements('clrScheme', namespace: _a).firstOrNull;
+      for (final color in scheme?.childElements ?? <XmlElement>[]) {
+        final rgb = color.getElement('srgbClr', namespace: _a)?.getAttribute('val') ??
+            color.getElement('sysClr', namespace: _a)?.getAttribute('lastClr');
+        if (rgb != null) themeColors[color.name.local] = rgb;
+      }
       for (final kind in ['major', 'minor']) {
         final f = theme
             ?.findAllElements('${kind}Font', namespace: _a)
@@ -261,7 +286,11 @@ class DocxLayoutHints {
                 pendingDrawingBreak ??= true;
               case 'drawing':
               case 'pict':
-                drawings.add(_drawing(n, drawingCount));
+                final drawing = _drawing(n, drawingCount);
+                final chartId = n.findAllElements('chart', namespace: _c).firstOrNull
+                    ?.getAttribute('id', namespace: _r);
+                if (chartParts.containsKey(chartId)) drawing['chartXml'] = chartParts[chartId]!;
+                drawings.add(drawing);
                 if (pendingDrawingBreak != null) {
                   drawingBreaks.add({
                     'index': drawingCount,
@@ -352,6 +381,7 @@ class DocxLayoutHints {
         'tables': tables,
         'sections': sections,
         'theme': themeFonts,
+        'themeColors': themeColors,
         'defaultTab':
             double.tryParse(
               settings
