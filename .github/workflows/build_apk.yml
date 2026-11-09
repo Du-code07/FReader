@@ -273,7 +273,15 @@ jobs:
           path: ${{ runner.temp }}/freader-gradle-distributions
           key: freader-gradle-bin-v1-${{ runner.os }}-${{ env.FREADER_GRADLE_VERSION }}-${{ env.FREADER_GRADLE_SHA256 }}
 
-      - name: 4d. Reuse verified Kotlin compiler from Gradle distribution
+      - name: 4c2. Restore verified Kotlin 2.1.0 download cache
+        id: kotlin-compiler-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/freader-kotlin-downloads
+          key: freader-kotlin-2.1.0-v1-${{ runner.os }}-c1b139a6f251c3b99e92befa326cb75d93a001d74c3ac601155a8cdb0d253783
+
+      - name: 4d. Prepare verified Kotlin compilers 2.0.21 and 2.1.0
+        timeout-minutes: 20
         shell: bash
         run: |
           set -euo pipefail
@@ -284,6 +292,8 @@ jobs:
           python3 - <<'PY'
           import hashlib
           import os
+          import shutil
+          import subprocess
           import zipfile
           from pathlib import Path
 
@@ -386,6 +396,56 @@ jobs:
           </project>
           """, encoding='utf-8')
           print(f'Prepared verified local Kotlin compiler 2.0.21 ({len(compiler)} bytes).')
+
+          # file_picker uses Kotlin 2.1.0 as well. Do NOT substitute 2.0.21: the
+          # compiler must match its Build Tools API. Prepare the exact published bytes.
+          # JAR SHA-256 independently matches JetBrains/kotlin gradle/verification-metadata.xml.
+          # POM is the unmodified Maven Central POM, including all runtime dependencies.
+          compiler_version = '2.1.0'
+          artifact_path = f'org/jetbrains/kotlin/kotlin-compiler-embeddable/{compiler_version}'
+          cache_dir = Path(os.environ['RUNNER_TEMP']) / 'freader-kotlin-downloads'
+          cache_dir.mkdir(parents=True, exist_ok=True)
+          repository_dir = Path(os.environ['FREADER_KOTLIN_REPOSITORY']) / artifact_path
+          repository_dir.mkdir(parents=True, exist_ok=True)
+          expected_files = {
+              'jar': 'c1b139a6f251c3b99e92befa326cb75d93a001d74c3ac601155a8cdb0d253783',
+              'pom': '0044fa45046fba7ca808d98f9895f25b16510edb53c1e282107db006d126d67f',
+          }
+          mirrors = [
+              'https://maven-central.storage-download.googleapis.com/maven2',
+              'https://repo.maven.apache.org/maven2',
+              'https://repo1.maven.org/maven2',
+          ]
+
+          def valid_file(path, expected_hash):
+              if not path.is_file():
+                  return False
+              with path.open('rb') as stream:
+                  return hashlib.file_digest(stream, 'sha256').hexdigest() == expected_hash
+
+          for extension, expected_hash in expected_files.items():
+              name = f'kotlin-compiler-embeddable-{compiler_version}.{extension}'
+              cached_file = cache_dir / name
+              if not valid_file(cached_file, expected_hash):
+                  partial = cached_file.with_suffix(cached_file.suffix + '.part')
+                  for mirror in mirrors:
+                      partial.unlink(missing_ok=True)
+                      print(f'Downloading {name} from {mirror}', flush=True)
+                      result = subprocess.run([
+                          'curl', '--fail', '--location', '--show-error', '--silent',
+                          '--retry', '2', '--retry-delay', '5', '--retry-all-errors',
+                          '--retry-max-time', '180', '--connect-timeout', '20', '--max-time', '180',
+                          f'{mirror}/{artifact_path}/{name}', '--output', str(partial),
+                      ])
+                      if result.returncode == 0 and valid_file(partial, expected_hash):
+                          partial.replace(cached_file)
+                          break
+                      print(f'::warning::{name} download or checksum failed; trying next endpoint.')
+                  partial.unlink(missing_ok=True)
+              if not valid_file(cached_file, expected_hash):
+                  raise SystemExit(f'Cannot prepare verified {name}; refusing to start an incomplete build.')
+              shutil.copyfile(cached_file, repository_dir / name)
+              print(f'Prepared verified local {name} ({cached_file.stat().st_size} bytes).')
           PY
 
           printf 'FREADER_KOTLIN_REPOSITORY=%s\n' "$FREADER_KOTLIN_REPOSITORY" >> "$GITHUB_ENV"
@@ -396,9 +456,14 @@ jobs:
           import org.gradle.api.initialization.resolve.RepositoriesMode
 
           def localPath = System.getenv('FREADER_KOTLIN_REPOSITORY')
-          if (!localPath || !new File(localPath,
-                  'org/jetbrains/kotlin/kotlin-compiler-embeddable/2.0.21/kotlin-compiler-embeddable-2.0.21.jar').isFile()) {
-              throw new GradleException('The verified FReader Kotlin repository is missing. Run workflow step 4d first.')
+          def compilerVersions = ['2.0.21', '2.1.0']
+          compilerVersions.each { version ->
+              ['jar', 'pom'].each { extension ->
+                  def relative = "org/jetbrains/kotlin/kotlin-compiler-embeddable/${version}/kotlin-compiler-embeddable-${version}.${extension}"
+                  if (!localPath || !new File(localPath, relative).isFile()) {
+                      throw new GradleException('The verified FReader Kotlin repository is missing ' + relative + '. Run workflow step 4d first.')
+                  }
+              }
           }
 
           def configureBundledCompiler = { repositories ->
@@ -406,16 +471,20 @@ jobs:
                   name = 'FReaderBundledKotlin'
                   url = new File(localPath).toURI()
                   content {
-                      includeVersion('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', '2.0.21')
+                      compilerVersions.each { version ->
+                          includeVersion('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', version)
+                      }
                   }
                   metadataSources { mavenPom() }
               }
               repositories.withType(MavenArtifactRepository).configureEach { repository ->
                   if (repository.name != 'FReaderBundledKotlin') {
-                      // Exclusion, not just ordering: even cached remote metadata must not
-                      // send this version back through the failing HTTP redirect chain.
+                      // Exclude BOTH exact versions from remote repositories, including ones
+                      // added later by subprojects such as file_picker. Ordering alone is not enough.
                       repository.content {
-                          excludeVersion('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', '2.0.21')
+                          compilerVersions.each { version ->
+                              excludeVersion('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', version)
+                          }
                       }
                   }
               }
@@ -454,19 +523,27 @@ jobs:
           }
           GRADLE
 
-      - name: 4e. Verify local Kotlin resolution without network
-        timeout-minutes: 5
+      - name: 4d2. Save verified Kotlin 2.1.0 download cache
+        if: steps.kotlin-compiler-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/freader-kotlin-downloads
+          key: freader-kotlin-2.1.0-v1-${{ runner.os }}-c1b139a6f251c3b99e92befa326cb75d93a001d74c3ac601155a8cdb0d253783
+
+      - name: 4e. Verify both Kotlin compilers and plugin subprojects offline
+        timeout-minutes: 8
         shell: bash
         run: |
           set -euo pipefail
           CHECK_DIR="$RUNNER_TEMP/freader-kotlin-check"
-          mkdir -p "$CHECK_DIR/included"
+          mkdir -p "$CHECK_DIR/included" "$CHECK_DIR/file_picker"
           cat > "$CHECK_DIR/settings.gradle" <<'GRADLE'
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
               repositories { mavenCentral() }
           }
           rootProject.name = 'freader-kotlin-check'
+          include(':file_picker')
           includeBuild('included') { name = 'freader-kotlin-included' }
           GRADLE
           cat > "$CHECK_DIR/included/settings.gradle" <<'GRADLE'
@@ -479,40 +556,62 @@ jobs:
           cat > "$CHECK_DIR/included/build.gradle" <<'GRADLE'
           buildscript {
               dependencies {
-                  // This preflight checks the previously failing jar itself. Production
-                  // resolution still uses the full published POM with its dependencies.
                   classpath('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21') { transitive = false }
               }
           }
-          configurations { bundledCompiler }
-          dependencies {
-              bundledCompiler('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21') { transitive = false }
+          configurations {
+              bundledCompiler2021
+              kotlinBuildToolsApiClasspath
+              kotlinCompilerClasspath
           }
+          dependencies {
+              bundledCompiler2021('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21') { transitive = false }
+              kotlinBuildToolsApiClasspath('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.0') { transitive = false }
+              kotlinCompilerClasspath('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.0') { transitive = false }
+          }
+          // Only the previously failing compiler artifacts are isolated in this preflight.
+          // The real build still uses both original POMs and all their transitive dependencies.
           tasks.register('verifyBundledKotlin') {
               doLast {
-                  def expected = new File(System.getenv('FREADER_KOTLIN_REPOSITORY'),
-                          'org/jetbrains/kotlin/kotlin-compiler-embeddable/2.0.21/kotlin-compiler-embeddable-2.0.21.jar').canonicalFile
-                  [buildscript.configurations.classpath, configurations.bundledCompiler].each { configuration ->
+                  def checksums = [
+                      '2.0.21': '9fa8cdd1de0dccffe154c997d423ec6b5f53cd6d9177e3a77a9b0de03fb1bc81',
+                      '2.1.0': 'c1b139a6f251c3b99e92befa326cb75d93a001d74c3ac601155a8cdb0d253783'
+                  ]
+                  def checks = [
+                      [buildscript.configurations.classpath, '2.0.21'],
+                      [configurations.bundledCompiler2021, '2.0.21'],
+                      [configurations.kotlinBuildToolsApiClasspath, '2.1.0'],
+                      [configurations.kotlinCompilerClasspath, '2.1.0']
+                  ]
+                  checks.each { entry ->
+                      def configuration = entry[0]
+                      def version = entry[1]
+                      def expected = new File(System.getenv('FREADER_KOTLIN_REPOSITORY'),
+                          "org/jetbrains/kotlin/kotlin-compiler-embeddable/${version}/kotlin-compiler-embeddable-${version}.jar").canonicalFile
                       def resolved = configuration.singleFile.canonicalFile
-                      if (resolved != expected) throw new GradleException('Kotlin did not resolve from the verified local repository: ' + resolved)
+                      if (resolved != expected) throw new GradleException('Kotlin did not resolve locally: ' + resolved)
                       def digest = java.security.MessageDigest.getInstance('SHA-256').digest(resolved.bytes).encodeHex().toString()
-                      if (digest != '9fa8cdd1de0dccffe154c997d423ec6b5f53cd6d9177e3a77a9b0de03fb1bc81') {
-                          throw new GradleException('Resolved Kotlin compiler checksum mismatch.')
-                      }
+                      if (digest != checksums[version]) throw new GradleException('Kotlin checksum mismatch: ' + version)
+                      println('FREADER_LOCAL_KOTLIN_OK: ' + project.path + ' / ' + configuration.name + ' / ' + version)
                   }
-                  println('FREADER_LOCAL_KOTLIN_OK: ' + project.name)
               }
           }
           GRADLE
           cp "$CHECK_DIR/included/build.gradle" "$CHECK_DIR/build.gradle"
+          cp "$CHECK_DIR/included/build.gradle" "$CHECK_DIR/file_picker/build.gradle"
           cat >> "$CHECK_DIR/build.gradle" <<'GRADLE'
           tasks.named('verifyBundledKotlin') {
+              dependsOn ':file_picker:verifyBundledKotlin'
               dependsOn gradle.includedBuild('freader-kotlin-included').task(':verifyBundledKotlin')
           }
           GRADLE
-          # Fail HERE with a clear message if the wiring ever regresses. No external
-          # repositories may be contacted by this check, including the included build.
-          "$GITHUB_WORKSPACE/android/gradlew" -p "$CHECK_DIR" --offline --no-daemon --console=plain verifyBundledKotlin
+          # Check settings-only repositories (Flutter's included build) and project
+          # repositories (Android/plugin subprojects), with the network disabled.
+          for MODE in FAIL_ON_PROJECT_REPOS PREFER_PROJECT; do
+            sed -i -E "s/RepositoriesMode\.(FAIL_ON_PROJECT_REPOS|PREFER_PROJECT)/RepositoriesMode.$MODE/g" \
+              "$CHECK_DIR/settings.gradle" "$CHECK_DIR/included/settings.gradle"
+            "$GITHUB_WORKSPACE/android/gradlew" -p "$CHECK_DIR" --offline --no-daemon --console=plain verifyBundledKotlin
+          done
 
       - name: 4f. Verify offline HWP engine and fonts
         shell: bash
@@ -601,7 +700,7 @@ jobs:
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
           set -euo pipefail
-          BUILD_NUM=$((132 + ${{ github.run_number }}))
+          BUILD_NUM=$((133 + ${{ github.run_number }}))
           flutter pub get
           # Regression helpers are optional repository files, not app assets.
           # Run them when uploaded; a failed test still stops the build.
