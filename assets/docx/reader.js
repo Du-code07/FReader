@@ -1,4 +1,4 @@
-import { applyDocxLayout, finalizeDocxLayout, fitDocxContent } from './docx_layout.js';
+import { applyDocxLayout, finalizeDocxLayout, fitDocxContent, settleDocxPageBreaks } from './docx_layout.js';
 // Read-only adapter for OpenDocument.core. All assets and documents stay local.
 const host = document.getElementById('pages');
 const measure = document.getElementById('measure');
@@ -264,6 +264,7 @@ async function preparePages(html, current) {
     const columnGap = inner.classList.contains('docx-layout') ? bodyWidth : 0;
     const columnStride = bodyWidth + columnGap;
     Object.assign(inner.style, { width: `${bodyWidth}px`, height: `${bodyHeight}px`, columnWidth: `${bodyWidth}px`, columnGap: `${columnGap}px` });
+    if (inner.classList.contains('docx-layout')) settleDocxPageBreaks(inner, columnStride);
     const columns = Math.max(1, Math.ceil((inner.scrollWidth + columnGap - 1) / columnStride));
     if (result.length + columns > 10000) throw new Error('표시할 Word 문서 페이지 수가 너무 많습니다.');
     for (let column = 0; column < columns; column++) result.push({ source, column, width, height, bodyWidth, columnStride, sectionPageCount: columns });

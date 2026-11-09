@@ -8,6 +8,41 @@ class DocxLayoutHints {
   static const _w =
       'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
   static const _a = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+  static const _wp =
+      'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+
+  static Map<String, Object> _drawing(XmlElement node, int index) {
+    final anchor = node.findAllElements('anchor', namespace: _wp).firstOrNull;
+    final inline = node.findAllElements('inline', namespace: _wp).firstOrNull;
+    final shape = anchor ?? inline;
+    if (shape == null) return {'index': index, 'kind': 'unsupported'};
+    Map<String, Object> axis(String name) {
+      final p = shape.getElement(name, namespace: _wp);
+      return {
+        if (p?.getAttribute('relativeFrom') != null)
+          'relativeFrom': p!.getAttribute('relativeFrom')!,
+        if (p?.getElement('posOffset', namespace: _wp) != null)
+          'offset': p!.getElement('posOffset', namespace: _wp)!.innerText,
+        if (p?.getElement('align', namespace: _wp) != null)
+          'align': p!.getElement('align', namespace: _wp)!.innerText,
+      };
+    }
+    final extent = shape.getElement('extent', namespace: _wp);
+    return {
+      'index': index,
+      'kind': anchor == null ? 'inline' : 'anchor',
+      'wrap': shape.children.whereType<XmlElement>()
+          .where((e) => e.name.namespaceUri == _wp && e.name.local.startsWith('wrap'))
+          .firstOrNull?.name.local ?? 'wrapNone',
+      'horizontal': axis('positionH'),
+      'vertical': axis('positionV'),
+      'width': extent?.getAttribute('cx') ?? '0',
+      'height': extent?.getAttribute('cy') ?? '0',
+      'distanceTop': shape.getAttribute('distT') ?? '0',
+      'distanceBottom': shape.getAttribute('distB') ?? '0',
+      'simplePosition': shape.getAttribute('simplePos') ?? '0',
+    };
+  }
   static XmlElement? _child(XmlNode? n, String name) =>
       n?.getElement(name, namespace: _w);
   static String? _attr(XmlElement? n, String name) =>
@@ -82,6 +117,35 @@ class DocxLayoutHints {
       final styles = part('word/styles.xml');
       final theme = part('word/theme/theme1.xml');
       final settings = part('word/settings.xml');
+      final numberingPart = part('word/numbering.xml');
+      final abstractNumbers = <String, XmlElement>{
+        for (final n in numberingPart?.findAllElements('abstractNum', namespace: _w) ?? <XmlElement>[])
+          if (_attr(n, 'abstractNumId') != null) _attr(n, 'abstractNumId')!: n,
+      };
+      final numbers = <String, XmlElement>{
+        for (final n in numberingPart?.findAllElements('num', namespace: _w) ?? <XmlElement>[])
+          if (_attr(n, 'numId') != null) _attr(n, 'numId')!: n,
+      };
+      Map<String, Object> numbering(Map<String, Object> props) {
+        final children = (props['numPr'] as Map?)?['children'] as Map?;
+        final id = (children?['numId'] as Map?)?['val']?.toString();
+        if (id == null || id == '0') return {};
+        final level = (children?['ilvl'] as Map?)?['val']?.toString() ?? '0';
+        final num = numbers[id];
+        final abstract = abstractNumbers[_val(num, 'abstractNumId')];
+        final base = abstract?.findElements('lvl', namespace: _w)
+            .where((e) => _attr(e, 'ilvl') == level).firstOrNull;
+        final override = num?.findElements('lvlOverride', namespace: _w)
+            .where((e) => _attr(e, 'ilvl') == level).firstOrNull;
+        final effective = _child(override, 'lvl') ?? base;
+        if (effective == null) return {};
+        return {
+          'props': _merge(_props(_child(base, 'pPr')), _props(_child(effective, 'pPr'))),
+          'run': _merge(_props(_child(base, 'rPr')), _props(_child(effective, 'rPr'))),
+          'suffix': _val(effective, 'suff') ?? _val(base, 'suff') ?? 'tab',
+          'alignment': _val(effective, 'lvlJc') ?? _val(base, 'lvlJc') ?? 'left',
+        };
+      }
       final styleMap = <String, XmlElement>{};
       String? normal;
       for (final s
@@ -145,10 +209,15 @@ class DocxLayoutHints {
             .where((e) => e.name.local == 'tbl' && e.name.namespaceUri == _w)
             .firstOrNull;
         final tableStyle = _val(_child(table, 'tblPr'), 'tblStyle');
-        final props = _merge(
+        var props = _merge(
           _merge(_merge(dp, style(tableStyle, 'pPr')), style(sid, 'pPr')),
           _props(pp),
         );
+        final list = numbering(props);
+        // Numbering contributes hanging indents/tab stops. Paragraph styles and
+        // direct properties still override the individual properties they set.
+        if (list.isNotEmpty) props = _merge(
+          Map<String, Object>.from(list['props'] as Map), props);
         // Paragraph-mark rPr affects empty paragraphs, not ordinary text runs.
         final baseRun = _merge(
           _merge(dr, style(tableStyle, 'rPr')),
@@ -159,6 +228,7 @@ class DocxLayoutHints {
         final breaks = <int>[];
         final cached = <int>[];
         final drawingBreaks = <Map<String, Object>>[];
+        final drawings = <Map<String, Object>>[];
         var drawingCount = 0;
         bool? pendingDrawingBreak;
         for (final run in p.findAllElements('r', namespace: _w)) {
@@ -191,6 +261,7 @@ class DocxLayoutHints {
                 pendingDrawingBreak ??= true;
               case 'drawing':
               case 'pict':
+                drawings.add(_drawing(n, drawingCount));
                 if (pendingDrawingBreak != null) {
                   drawingBreaks.add({
                     'index': drawingCount,
@@ -216,11 +287,13 @@ class DocxLayoutHints {
           'index': index,
           'text': text.toString(),
           'props': props,
+          if (list.isNotEmpty) 'numbering': list,
           'mark': _merge(baseRun, _props(_child(pp, 'rPr'))),
           'runs': runs,
           'breaks': breaks,
           'cachedBreaks': cached,
           'drawingCount': drawingCount,
+          'drawings': drawings,
           'drawingBreaks': drawingBreaks,
         });
       }

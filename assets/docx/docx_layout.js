@@ -61,7 +61,26 @@ function paragraphStyle(p, hint, theme, tab) {
   if (ind.right != null || ind.end != null) p.style.marginRight = pt(ind.end ?? ind.right);
   const hanging = number(ind.hanging), first = number(ind.firstLine);
   const marker = p.querySelector('.odr-list-marker');
-  if (marker && hanging) {
+  if (marker && hint.numbering && hanging > 0) {
+    // Core supplies generic 2em list padding and a literal suffix tab. OOXML
+    // indentation below already defines the number/text positions; retaining
+    // both the padding and that tab counts the gap twice.
+    const item = p.closest('.odr-list-item');
+    if (item) item.style.paddingLeft = '0';
+    const list = hint.numbering, suffix = list.suffix || 'tab';
+    marker.textContent = marker.textContent.replace(/[\t ]+$/, '') + (suffix === 'space' ? '\u00a0' : '');
+    const left = number(ind.start ?? ind.left), start = left - hanging;
+    const stop = (props.tabs?.stops || []).filter(t => ['num', 'left'].includes(t.val) && number(t.pos) > start)
+      .sort((a, b) => number(a.pos) - number(b.pos))[0];
+    const slot = suffix === 'tab' ? Math.max(0, (stop ? number(stop.pos) - start : hanging)) : null;
+    Object.assign(marker.style, { marginLeft: pt(-hanging), minWidth: '0',
+      width: slot == null ? 'auto' : pt(slot), marginRight: '0',
+      textIndent: '0', whiteSpace: 'pre', textAlign: list.alignment || 'left' });
+    runStyle(marker, { ...hint.mark, ...list.run }, theme, marker.textContent);
+    marker.dataset.docxList = 'true';
+    marker.dataset.docxSuffix = suffix;
+    p.style.textIndent = '0';
+  } else if (marker && hanging) {
     Object.assign(marker.style, { marginLeft: pt(-hanging), minWidth: pt(hanging), textIndent: '0' });
     p.style.textIndent = '0';
   } else if (ind.firstLine != null || ind.hanging != null) p.style.textIndent = pt(first - hanging);
@@ -147,7 +166,10 @@ function splitAt(p, offset, cached) {
     const row = p.closest('tr');
     if (row) {
       if (p === row.querySelector('x-p') && !row.querySelector('[rowspan]')) row.style.breakBefore = 'column';
-    } else p.style.breakBefore = 'column';
+    } else {
+      if (cached && p.style.breakBefore !== 'column') p.dataset.docxCachedBreak = 'true';
+      p.style.breakBefore = 'column';
+    }
     return;
   }
   if (cached && p.closest('td')) return; // A cached split in one cell cannot split an entire row.
@@ -157,6 +179,8 @@ function splitAt(p, offset, cached) {
     const range = p.ownerDocument.createRange();
     range.setStart(node, remaining); range.setEnd(p, p.childNodes.length);
     const next = p.cloneNode(false); next.append(range.extractContents());
+    if (cached) next.dataset.docxCachedBreak = 'true';
+    else delete next.dataset.docxCachedBreak;
     next.style.breakBefore = 'column'; next.style.textIndent = '0'; next.style.marginTop = '0';
     p.after(next); return;
   }
@@ -205,6 +229,13 @@ export function applyDocxLayout(root, layout) {
     if (found < 0) continue;
     const p = paragraphs[found]; cursor = found + 1; matches.set(hint.index, p);
     paragraphStyle(p, hint, layout.theme || {}, layout.defaultTab || 720);
+    const images = [...p.querySelectorAll('img')];
+    if (images.length === hint.drawingCount) for (const drawing of hint.drawings || []) {
+      const img = images[drawing.index], frame = img?.parentElement;
+      if (drawing.kind === 'anchor' && frame?.localName === 'div' &&
+          frame.children.length === 1 && frame.firstElementChild === img)
+        frame.dataset.docxAnchor = JSON.stringify(drawing);
+    }
     literalLeaders(p, hint);
   }
   applyTables(root, layout.tables || []);
@@ -225,10 +256,13 @@ export function applyDocxLayout(root, layout) {
         range.setStart(paragraph, 0); range.setEndBefore(frame);
         const before = range.cloneContents();
         if (!before.textContent.trim() && !before.querySelector('img')) {
+          if (br.cached && paragraph.style.breakBefore !== 'column') paragraph.dataset.docxCachedBreak = 'true';
           paragraph.style.breakBefore = 'column'; continue;
         }
         range.setStartBefore(frame); range.setEnd(paragraph, paragraph.childNodes.length);
         const next = paragraph.cloneNode(false); next.append(range.extractContents());
+        if (br.cached) next.dataset.docxCachedBreak = 'true';
+        else delete next.dataset.docxCachedBreak;
         next.style.breakBefore = 'column'; next.style.textIndent = '0'; next.style.marginTop = '0';
         paragraph.after(next);
       }
@@ -243,6 +277,23 @@ export function applyDocxLayout(root, layout) {
 // CSS columns that overflow used to appear over text on the following page.
 export function fitDocxContent(inner, bodyWidth, bodyHeight) {
   inner.style.width = `${bodyWidth}px`;
+  const anchors = [];
+  for (const frame of inner.querySelectorAll('[data-docx-anchor]')) {
+    const h = JSON.parse(frame.dataset.docxAnchor), p = frame.closest('x-p');
+    // Top/bottom wrapping is a full-width exclusion at a paragraph-relative Y,
+    // not an inline block before its paragraph's text. Leave unsupported shape
+    // types/coordinate systems unchanged rather than guessing their placement.
+    if (!p || p.closest('td,th') || p.querySelectorAll('img').length !== 1 ||
+        h.wrap !== 'wrapTopAndBottom' || !['0', 'false'].includes(h.simplePosition) || h.vertical.relativeFrom !== 'paragraph' ||
+        h.vertical.offset == null || number(h.vertical.offset, -1) <= 0 ||
+        !['column', 'margin', 'page'].includes(h.horizontal.relativeFrom)) continue;
+    const y = number(h.vertical.offset) / 9525, height = number(h.height) / 9525;
+    if (!(height > 0) || y + height > bodyHeight) continue;
+    // Core exports anchor offsets as block margins. They must not contribute
+    // paragraph height or be added to its indentation a second time.
+    frame.style.margin = '0'; frame.style.zIndex = 'auto';
+    anchors.push({ frame, p, h, y });
+  }
   for (const table of inner.querySelectorAll('table')) {
     const css = getComputedStyle(table), parent = table.parentElement;
     const parentWidth = parent === inner ? bodyWidth : parent.clientWidth
@@ -283,6 +334,48 @@ export function fitDocxContent(inner, bodyWidth, bodyHeight) {
       img.style.position = 'static'; img.style.display = 'block';
     }
     frame.style.breakInside = 'avoid';
+  }
+  // Browser multicolumn floats can detach a picture from its anchor and clip
+  // part of a line. Materialize top/bottom pictures as flow blocks instead.
+  // Measure paragraph anchors before reserving any picture space: Word's
+  // paragraph-relative offsets can already account for a preceding picture.
+  // Adding that offset after its full height again doubles the vertical gap.
+  const direct = anchors;
+  direct.forEach(a => a.frame.remove());
+  let region = null;
+  const regions = new Map();
+  for (const block of inner.querySelectorAll('x-p')) {
+    if (!region || block.style.breakBefore === 'column') region = block;
+    regions.set(block, region);
+  }
+  for (const a of direct) {
+    a.region = regions.get(a.p);
+    a.relativeTop = a.p.getBoundingClientRect().top - a.region.getBoundingClientRect().top;
+  }
+  for (const { frame, p, h, y, region, relativeTop } of direct) {
+    // Detached frames retain their CSS extents (usually inches), so read the
+    // final width only once the frame has been reattached.
+    const paragraphGap = getComputedStyle(p).marginBottom;
+    const target = region.getBoundingClientRect().top + relativeTop + y;
+    p.style.marginBottom = '0';
+    Object.assign(frame.style, { position: 'relative', display: 'block',
+      left: 'auto', top: 'auto', marginTop: '0', marginBottom: paragraphGap });
+    p.after(frame);
+    const pictureWidth = frame.getBoundingClientRect().width;
+    let x = number(h.horizontal.offset) / 9525;
+    if (h.horizontal.align === 'center') x = (bodyWidth - pictureWidth) / 2;
+    else if (h.horizontal.align === 'right') x = bodyWidth - pictureWidth;
+    if (h.horizontal.relativeFrom === 'page') x -= parseFloat(getComputedStyle(inner).marginLeft) || 0;
+    const containerOffset = frame.getBoundingClientRect().left - inner.getBoundingClientRect().left;
+    frame.style.marginLeft = `${x - containerOffset}px`;
+    // Keep the complete anchor paragraph readable before a positive-Y picture.
+    // Font substitution may add a line; never paint the picture over that line.
+    frame.style.marginTop = `${Math.max(number(h.distanceTop) / 9525,
+      target - frame.getBoundingClientRect().top)}px`;
+    frame.style.marginBottom = `${Math.max(parseFloat(paragraphGap) || 0,
+      number(h.distanceBottom) / 9525)}px`;
+    frame.classList.add('docx-anchored-picture');
+    p.style.breakAfter = 'avoid';
   }
   // Chromium's multicol table fragmentation can place a later cell relative to
   // the preceding column, even when tr has break-inside:avoid. Materialize safe
@@ -332,11 +425,34 @@ export function fitDocxContent(inner, bodyWidth, bodyHeight) {
   }
 }
 
+// lastRenderedPageBreak is a saved layout hint, not an author-inserted break.
+// A substituted font can already carry the preceding paragraph onto that page;
+// forcing another break then creates a nearly empty page. Keep explicit breaks
+// and only apply a cached boundary if natural pagination has not reached it.
+export function settleDocxPageBreaks(inner, columnStride) {
+  const cached = [...inner.querySelectorAll('x-p[data-docx-cached-break="true"]')];
+  if (!cached.length) return;
+  cached.forEach(p => p.style.breakBefore = 'auto');
+  const origin = inner.getBoundingClientRect().left;
+  const columnOf = p => Math.max(0, Math.round(((p.getClientRects()[0]?.left ?? origin) - origin) / columnStride));
+  let previous = 0;
+  for (const p of cached) {
+    if (columnOf(p) <= previous) p.style.breakBefore = 'column';
+    previous = columnOf(p);
+  }
+}
+
 // Resolve tab stops against the actual fonts and text width, before pagination.
 export function finalizeDocxLayout(root, layout) {
   if (layout?.version !== 1) return;
   const step = Math.max(1, number(layout.defaultTab, 720)) / 15;
   for (const p of root.querySelectorAll('.docx-layout x-p')) {
+    const marker = p.querySelector('[data-docx-list="true"]');
+    if (marker?.dataset.docxSuffix === 'tab') {
+      const range = p.ownerDocument.createRange(); range.selectNodeContents(marker);
+      const needed = range.getBoundingClientRect().width + 4;
+      if (needed > marker.getBoundingClientRect().width) marker.style.width = `${needed}px`;
+    }
     if (p.dataset.docxAutoLine || p.dataset.docxMinLine) {
       // OOXML automatic leading multiplies the font's line box, not just its
       // em size. Treating 240/240 as CSS 1.0 crushes Korean glyphs/table rows.
