@@ -1,0 +1,38 @@
+FReader Excel viewer (v55)
+
+Office Open XML Viewer: @silurus/ooxml 0.89.8
+Legacy XLS parser: @silurus/ooxml-legacy-office 0.89.8
+Project: https://github.com/yukiyokotani/office-open-xml-viewer
+License: MIT
+
+Full upstream copyright and license notices are retained in:
+  engine/LICENSE
+  engine/THIRD_PARTY_NOTICES.md
+  legacy/LICENSE
+  legacy/THIRD_PARTY_NOTICES.md
+
+Retain these notices when redistributing the application. The upstream MIT
+license permits commercial use, modification and distribution subject to its
+copyright and license notice requirements. Bundled dependencies have their
+own permissive license notices in the files above, including MathJax/STIX.
+
+The viewer reuses Noto Sans KR and Noto Serif KR from ../hwp/fonts/ with their
+SIL Open Font License notices. No Microsoft fonts are included. Installed
+fonts are preferred; substitution can change text metrics and line breaks.
+
+FReader modifications: .mjs filenames and references renamed to .js for
+Android asset MIME handling; legacy companion imports point to the bundled
+engine. No upstream parser/rendering logic changed. The local Flutter bridge,
+mobile sheet panning/pinch zoom and position restoration are in reader.js.
+PROVENANCE.json records pinned package integrity and per-file checksums.
+
+All code and fonts are packaged locally. useGoogleFonts is false. Document
+links cannot navigate the viewer. Files and passwords are not uploaded.
+
+Supported formats: XLSX, XLSM, and the experimental BIFF8 subset of XLS.
+This is a read-only viewer, not an Excel calculation engine. It shows stored
+formula results without recalculation and never runs macros, external data
+connections or embedded programs. Legacy XLS variants outside the supported
+subset report an error and require an XLSX conversion. XLSB is not supported.
+Sheets are continuous grids, not paginated print-layout replicas. Microsoft
+Excel layout fidelity is not guaranteed for every feature or installed font.

@@ -1,0 +1,305 @@
+{
+  "engine": {
+    "package": "@silurus/ooxml",
+    "version": "0.89.8",
+    "license": "MIT",
+    "npmIntegrity": "sha512-t5dJ+pLGUTmjDjGNV9wE1cdRqFg5vDSVZN7I7okMSiMNnCR9tdk0P7O9yZ8EtXgtV2rToF7E4L6Lbca7yt+4+w==",
+    "npmTarball": "https://registry.npmjs.org/@silurus/ooxml/-/ooxml-0.89.8.tgz",
+    "modifications": "ES module .mjs filenames/references renamed to .js for Android asset MIME handling. Legacy companion import points to the bundled engine; no parsing or rendering logic changed.",
+    "artifacts": {
+      "abort-JztSoyw2.js": {
+        "upstreamName": "abort-JztSoyw2.js",
+        "bytes": 148,
+        "sha256": "e8821b412f3ceff45100a0db1e0eb5c57f74af0fe12a891e478306a17041d71a",
+        "upstreamSha256": "e8821b412f3ceff45100a0db1e0eb5c57f74af0fe12a891e478306a17041d71a"
+      },
+      "bounded-raw-part-cache-B5a6cGKO.js": {
+        "upstreamName": "bounded-raw-part-cache-B5a6cGKO.js",
+        "bytes": 519488,
+        "sha256": "9d8ae71b8a04e0e5b01730ad9b020fd113c7d266943dfd409493fa5ea057c665",
+        "upstreamSha256": "9d8ae71b8a04e0e5b01730ad9b020fd113c7d266943dfd409493fa5ea057c665"
+      },
+      "bundled-asset-url-BMJ8vNHP.js": {
+        "upstreamName": "bundled-asset-url-BMJ8vNHP.js",
+        "bytes": 288,
+        "sha256": "92b935e6b1984bd2e7ac6238792acab395ea4fee9bffb368e669968f71151e49",
+        "upstreamSha256": "92b935e6b1984bd2e7ac6238792acab395ea4fee9bffb368e669968f71151e49"
+      },
+      "canvas-viewer-mechanics-BsqaoYgK.js": {
+        "upstreamName": "canvas-viewer-mechanics-BsqaoYgK.js",
+        "bytes": 20870,
+        "sha256": "7fd373be0d295eb72425a9aa3e1c88c9967ae7fb4a4e03c550e86be065076f21",
+        "upstreamSha256": "7fd373be0d295eb72425a9aa3e1c88c9967ae7fb4a4e03c550e86be065076f21"
+      },
+      "cfb-guard-DzYlucez.js": {
+        "upstreamName": "cfb-guard-DzYlucez.js",
+        "bytes": 16425,
+        "sha256": "e022bffd82280a21a074dd2a6bc7ab69406dfa71a646b5eff7d7ac43b9e23afd",
+        "upstreamSha256": "e022bffd82280a21a074dd2a6bc7ab69406dfa71a646b5eff7d7ac43b9e23afd"
+      },
+      "chart-ex.js": {
+        "upstreamName": "chart-ex.mjs",
+        "bytes": 40640,
+        "sha256": "2541a7c09a654e20a9f2aebfb0f1f939d5d0c1aa320e935245d3a2e4358c3cc0",
+        "upstreamSha256": "2541a7c09a654e20a9f2aebfb0f1f939d5d0c1aa320e935245d3a2e4358c3cc0"
+      },
+      "chunk-D5OxutzX.js": {
+        "upstreamName": "chunk-D5OxutzX.js",
+        "bytes": 203,
+        "sha256": "c65e5d00a5a7b62d8ad3d5f392f06af51362efa28c5edd2b82584acc78115a57",
+        "upstreamSha256": "c65e5d00a5a7b62d8ad3d5f392f06af51362efa28c5edd2b82584acc78115a57"
+      },
+      "comment-ui-runtime-BtP_TpvT.js": {
+        "upstreamName": "comment-ui-runtime-BtP_TpvT.js",
+        "bytes": 107,
+        "sha256": "965c14ea948affcc905f9b2379dd4b6807f9506cc24c720f60d08beda5fba1e8",
+        "upstreamSha256": "965c14ea948affcc905f9b2379dd4b6807f9506cc24c720f60d08beda5fba1e8"
+      },
+      "delimited-text-worker-host-RwvuSsP2.js": {
+        "upstreamName": "delimited-text-worker-host-RwvuSsP2.js",
+        "bytes": 18101,
+        "sha256": "e752b2310614886be3ee02f89d31f615d84f64e7b72829893a143e8b92dcba3c",
+        "upstreamSha256": "e752b2310614886be3ee02f89d31f615d84f64e7b72829893a143e8b92dcba3c"
+      },
+      "drawingml-shape-B1_kg4BV.js": {
+        "upstreamName": "drawingml-shape-B1_kg4BV.js",
+        "bytes": 10825,
+        "sha256": "57bd17a63e7ee8cbb8741a193fe7c03cdd77d9ab3f1f841de44e0f71c79af212",
+        "upstreamSha256": "57bd17a63e7ee8cbb8741a193fe7c03cdd77d9ab3f1f841de44e0f71c79af212"
+      },
+      "duotone-GK4Hqn7f.js": {
+        "upstreamName": "duotone-GK4Hqn7f.js",
+        "bytes": 3414,
+        "sha256": "21bd1ae642aa45f6b82a14281fbbfe75e4600be5903648bbb757244a87eaa980",
+        "upstreamSha256": "21bd1ae642aa45f6b82a14281fbbfe75e4600be5903648bbb757244a87eaa980"
+      },
+      "emf--QWY-UlT.js": {
+        "upstreamName": "emf--QWY-UlT.js",
+        "bytes": 50356,
+        "sha256": "9a844383ac3ba28890400ba88a71f71b5d20ec04842dcd54d87ddd9f6ee187d0",
+        "upstreamSha256": "9a844383ac3ba28890400ba88a71f71b5d20ec04842dcd54d87ddd9f6ee187d0"
+      },
+      "grid-geometry-DpMAiSZb.js": {
+        "upstreamName": "grid-geometry-DpMAiSZb.js",
+        "bytes": 12741,
+        "sha256": "0c839bd524a563906040c557f3c129c10c126c6b82170ac4695d55841a9336b0",
+        "upstreamSha256": "0c839bd524a563906040c557f3c129c10c126c6b82170ac4695d55841a9336b0"
+      },
+      "host-layout-Cz_lCuTZ.js": {
+        "upstreamName": "host-layout-Cz_lCuTZ.js",
+        "bytes": 1876,
+        "sha256": "5e384637d39e26d0dc9f5b1aaf2425f937083612f9f912328272277e35ef411e",
+        "upstreamSha256": "5e384637d39e26d0dc9f5b1aaf2425f937083612f9f912328272277e35ef411e"
+      },
+      "internal-companion.js": {
+        "upstreamName": "internal-companion.mjs",
+        "bytes": 515,
+        "sha256": "890b550e21f783e4746d4f8c5c2128b25172b9d93102244a926963548edf3228",
+        "upstreamSha256": "890b550e21f783e4746d4f8c5c2128b25172b9d93102244a926963548edf3228"
+      },
+      "math.js": {
+        "upstreamName": "math.mjs",
+        "bytes": 1190,
+        "sha256": "e52a1f55e1f901005e1da0f8c38344829a5a615075191cef59dff3fd61469271",
+        "upstreamSha256": "e52a1f55e1f901005e1da0f8c38344829a5a615075191cef59dff3fd61469271"
+      },
+      "mathjax-DvwccQ8e.js": {
+        "upstreamName": "mathjax-DvwccQ8e.js",
+        "bytes": 428,
+        "sha256": "9b2737739944c728a77c82a61b00c76eea68b0af7f380332732fa443137f125e",
+        "upstreamSha256": "9b2737739944c728a77c82a61b00c76eea68b0af7f380332732fa443137f125e"
+      },
+      "mathjax-stix2.js": {
+        "upstreamName": "mathjax-stix2.js",
+        "bytes": 3937983,
+        "sha256": "aa041e685e1ed8e77ede445ae59ee8a68d1cda98cc7dbed113e7a1bbba3131dd",
+        "upstreamSha256": "3c88661f969c7b89b467ee49f483f62c67b0ddb772d1086c8fcb16742231b61c"
+      },
+      "model-source-COXegBNA.js": {
+        "upstreamName": "model-source-COXegBNA.js",
+        "bytes": 7016,
+        "sha256": "a545c635584facef7c4e5a64fd230986b61fb7a3c59d4ffd77659e817e79e7cc",
+        "upstreamSha256": "a545c635584facef7c4e5a64fd230986b61fb7a3c59d4ffd77659e817e79e7cc"
+      },
+      "pixel-budget-DI82Hn3R.js": {
+        "upstreamName": "pixel-budget-DI82Hn3R.js",
+        "bytes": 1456,
+        "sha256": "1f18effa5e783adf767b43db6019bb0811916b0d8e54f668a96e422523bd8750",
+        "upstreamSha256": "1f18effa5e783adf767b43db6019bb0811916b0d8e54f668a96e422523bd8750"
+      },
+      "plot-area-frame-DNYMd9Pf.js": {
+        "upstreamName": "plot-area-frame-DNYMd9Pf.js",
+        "bytes": 815541,
+        "sha256": "12b343b70defdabc0691ae0877a305cbf5f172183dee03650bbbfd42325e83cf",
+        "upstreamSha256": "12b343b70defdabc0691ae0877a305cbf5f172183dee03650bbbfd42325e83cf"
+      },
+      "raster-target-Ca3tyA0L.js": {
+        "upstreamName": "raster-target-Ca3tyA0L.js",
+        "bytes": 1430,
+        "sha256": "7dba3c2cfd72edd3831cae0c490b00c9f2f01bd7de571c6c1ab79c62908a5cba",
+        "upstreamSha256": "7dba3c2cfd72edd3831cae0c490b00c9f2f01bd7de571c6c1ab79c62908a5cba"
+      },
+      "read-only-comment-margin-Ee9Y6vPg.js": {
+        "upstreamName": "read-only-comment-margin-Ee9Y6vPg.js",
+        "bytes": 13963,
+        "sha256": "868672bd80a98f841353599dadaa9eb2ce5030461e9d6468c06c78d4551fb505",
+        "upstreamSha256": "868672bd80a98f841353599dadaa9eb2ce5030461e9d6468c06c78d4551fb505"
+      },
+      "render-worker-host-BZoh-wqR.js": {
+        "upstreamName": "render-worker-host-BZoh-wqR.js",
+        "bytes": 178,
+        "sha256": "97df0d875828365e571c6326315cc1e25047fc9e7eaa08a16046e7a0014f2b42",
+        "upstreamSha256": "97df0d875828365e571c6326315cc1e25047fc9e7eaa08a16046e7a0014f2b42"
+      },
+      "renderer-CCA_bQB8.js": {
+        "upstreamName": "renderer-CCA_bQB8.js",
+        "bytes": 166200,
+        "sha256": "10486cd74f63afc7797f98873ea3fcb9af4fc6aec00d1fa4560995b4f9ac5772",
+        "upstreamSha256": "10486cd74f63afc7797f98873ea3fcb9af4fc6aec00d1fa4560995b4f9ac5772"
+      },
+      "renderer-DpTePxGq.js": {
+        "upstreamName": "renderer-DpTePxGq.js",
+        "bytes": 273527,
+        "sha256": "156b543a8b8734ddd9280aca01cfa1ce8d31c3e01814d53a96deab9516adf267",
+        "upstreamSha256": "156b543a8b8734ddd9280aca01cfa1ce8d31c3e01814d53a96deab9516adf267"
+      },
+      "renderer-module-contract-BuTx2FWJ.js": {
+        "upstreamName": "renderer-module-contract-BuTx2FWJ.js",
+        "bytes": 925,
+        "sha256": "5b66047a8638e93ba2a5cd9adbd36ce591b3d179ec9ff403d2ccd9b6bd309137",
+        "upstreamSha256": "5b66047a8638e93ba2a5cd9adbd36ce591b3d179ec9ff403d2ccd9b6bd309137"
+      },
+      "resource-measurement-CfJtbwiR.js": {
+        "upstreamName": "resource-measurement-CfJtbwiR.js",
+        "bytes": 26000,
+        "sha256": "aac1efe15fd2b0c372d4ba608c367073ef2241fdea35e91abf6ea7c080018443",
+        "upstreamSha256": "aac1efe15fd2b0c372d4ba608c367073ef2241fdea35e91abf6ea7c080018443"
+      },
+      "three-d-BfMZVR0w.js": {
+        "upstreamName": "three-d-BfMZVR0w.js",
+        "bytes": 27444,
+        "sha256": "b083a7b2d489fac190c9be11e3444a78106e869d28d2bf6b33b64cb178ce2f26",
+        "upstreamSha256": "b083a7b2d489fac190c9be11e3444a78106e869d28d2bf6b33b64cb178ce2f26"
+      },
+      "three-d.js": {
+        "upstreamName": "three-d.mjs",
+        "bytes": 108766,
+        "sha256": "552f6f25fc2c13a64a7eda647bdc33c2aad2c85893f918554441359c9a24785f",
+        "upstreamSha256": "552f6f25fc2c13a64a7eda647bdc33c2aad2c85893f918554441359c9a24785f"
+      },
+      "tiff-contract-DEd8CGuz.js": {
+        "upstreamName": "tiff-contract-DEd8CGuz.js",
+        "bytes": 1550,
+        "sha256": "457e461ad8200864d7511ab181d82119f9d4e7994fbbe84c2dfde97e4b550172",
+        "upstreamSha256": "457e461ad8200864d7511ab181d82119f9d4e7994fbbe84c2dfde97e4b550172"
+      },
+      "tiff.js": {
+        "upstreamName": "tiff.mjs",
+        "bytes": 28107,
+        "sha256": "a949b1df64b1bb2371aca813b74c48ad8a72b6c4819d3b3d62791e6c3d6eb09a",
+        "upstreamSha256": "a949b1df64b1bb2371aca813b74c48ad8a72b6c4819d3b3d62791e6c3d6eb09a"
+      },
+      "visible-index-vN-4BNn7.js": {
+        "upstreamName": "visible-index-vN-4BNn7.js",
+        "bytes": 345,
+        "sha256": "09b7c0727f06f76df36f0bf39f971f56af1a1d8310a821bca7078e10cd93ba65",
+        "upstreamSha256": "09b7c0727f06f76df36f0bf39f971f56af1a1d8310a821bca7078e10cd93ba65"
+      },
+      "workbook-model-source-BHR8shXr.js": {
+        "upstreamName": "workbook-model-source-BHR8shXr.js",
+        "bytes": 3394,
+        "sha256": "f1377681885f59ac19f0b1aaea5350f01cac95ca39e7f66d0732f16f7fdf65c2",
+        "upstreamSha256": "43a233acb30fb05dc36dad643d0bb299398640321aa93743666b485c89975825"
+      },
+      "worker-source-C29EQNUj.js": {
+        "upstreamName": "worker-source-C29EQNUj.js",
+        "bytes": 46560,
+        "sha256": "cea065ddedba06b7701e9e5c2fd7c1b5c20c3babceaa7534b9fdd1950277e10a",
+        "upstreamSha256": "cea065ddedba06b7701e9e5c2fd7c1b5c20c3babceaa7534b9fdd1950277e10a"
+      },
+      "worksheet-pull-client-BudfclVl.js": {
+        "upstreamName": "worksheet-pull-client-BudfclVl.js",
+        "bytes": 17232,
+        "sha256": "9a022873f127b1db99be16aebbe9c1f1c2aee77878b06c08ecaae6e9c82a5a71",
+        "upstreamSha256": "9a022873f127b1db99be16aebbe9c1f1c2aee77878b06c08ecaae6e9c82a5a71"
+      },
+      "xlsx-DTtDjzFq.js": {
+        "upstreamName": "xlsx-DTtDjzFq.js",
+        "bytes": 270054,
+        "sha256": "59bcbe958ace1a5c73a8adb4d82f8ebc05c6e43114598b44ebe5c61806fe1690",
+        "upstreamSha256": "59bcbe958ace1a5c73a8adb4d82f8ebc05c6e43114598b44ebe5c61806fe1690"
+      },
+      "xlsx-source-worker.js": {
+        "upstreamName": "xlsx-source-worker.mjs",
+        "bytes": 16572,
+        "sha256": "4072b12a1142d9a69a9457f1cb3b52ef10f46c31fe3a8df1508514bfb6bc032e",
+        "upstreamSha256": "4072b12a1142d9a69a9457f1cb3b52ef10f46c31fe3a8df1508514bfb6bc032e"
+      },
+      "xlsx.js": {
+        "upstreamName": "xlsx.mjs",
+        "bytes": 871,
+        "sha256": "ad9356a58c7545ad7e4df681a4d8136c53ca16e556ec0b787d1d60b7c11201b4",
+        "upstreamSha256": "ad9356a58c7545ad7e4df681a4d8136c53ca16e556ec0b787d1d60b7c11201b4"
+      },
+      "xlsx_parser_bg.wasm": {
+        "upstreamName": "xlsx_parser_bg.wasm",
+        "bytes": 1938136,
+        "sha256": "7fa5438cefa0948ce9f20bb9c06cc0951171c61946bbc8a3eee409f8168655c5",
+        "upstreamSha256": "7fa5438cefa0948ce9f20bb9c06cc0951171c61946bbc8a3eee409f8168655c5"
+      }
+    }
+  },
+  "legacy": {
+    "package": "@silurus/ooxml-legacy-office",
+    "version": "0.89.8",
+    "license": "MIT",
+    "npmIntegrity": "sha512-11nuwxC1Go6K700nY2URSQdeAxATnicvjKNtde2MhVouSQrVNVm/VH7dKp3Ke/AZT9OFU+lnTHWQwIRFiiWe1w==",
+    "npmTarball": "https://registry.npmjs.org/@silurus/ooxml-legacy-office/-/ooxml-legacy-office-0.89.8.tgz",
+    "modifications": "ES module .mjs filenames/references renamed to .js for Android asset MIME handling. Legacy companion import points to the bundled engine; no parsing or rendering logic changed.",
+    "artifacts": {
+      "legacy-source-C8enaLSh.js": {
+        "upstreamName": "legacy-source-C8enaLSh.js",
+        "bytes": 5441,
+        "sha256": "a1c4beeb53cdb279f9ded96dcebafd26c92637fc983d09e24d432023e0ad5170",
+        "upstreamSha256": "47e0563b92808baee6f197b57907d09e42bdb2697eacc08d2f9029821bc13795"
+      },
+      "legacy-xls-source-module.js": {
+        "upstreamName": "legacy-xls-source-module.mjs",
+        "bytes": 10689,
+        "sha256": "815ee4d73dc8456032d405415a496849e4f54b700f39a914094888897c93d453",
+        "upstreamSha256": "815ee4d73dc8456032d405415a496849e4f54b700f39a914094888897c93d453"
+      },
+      "legacy_xls_direct_bg.wasm": {
+        "upstreamName": "legacy_xls_direct_bg.wasm",
+        "bytes": 1268551,
+        "sha256": "902ed4eed17b25f63949ff43630babc2ab6e778bb93f8edcdc882de389e8ebc1",
+        "upstreamSha256": "902ed4eed17b25f63949ff43630babc2ab6e778bb93f8edcdc882de389e8ebc1"
+      },
+      "xls.js": {
+        "upstreamName": "xls.mjs",
+        "bytes": 532,
+        "sha256": "8155b86229843cb8f69ddd5e5bba75c4c151cf319456c14c403797b290a67386",
+        "upstreamSha256": "e805d1921c0dd46b75d67a2f158289eb56ff12c4e848900bfb3a17ae067678d1"
+      }
+    }
+  },
+  "integrationRevision": 55,
+  "integrationArtifacts": {
+    "index.html": {
+      "bytes": 666,
+      "sha256": "553bd9f6128b2f1215fbe7d14d2bff17a4837a1067722fbb7dd5d334576a1c08"
+    },
+    "reader.js": {
+      "bytes": 13791,
+      "sha256": "bb7c385bcc078d3f7d153db856ccfc9db44c7b3c6e21ce52018622550a3ecdf0"
+    },
+    "reader.css": {
+      "bytes": 487,
+      "sha256": "b6e1f19885a6a111084f373d58468999296f7928e311ab2c211f5fe16e3777fc"
+    },
+    "THIRD_PARTY_NOTICES.txt": {
+      "bytes": 1953,
+      "sha256": "d08c7d2c8ab43c0e58206fbb95ef6871641e399623066f0437d9c89ccf095c84"
+    }
+  }
+}

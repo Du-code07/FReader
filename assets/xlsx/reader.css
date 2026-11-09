@@ -1,0 +1,8 @@
+html, body, #sheet { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+body { background: #fff; font-family: 'Noto Sans KR', sans-serif; }
+#sheet { position: relative; touch-action: none; overscroll-behavior: none; }
+#sheet canvas { display: block; }
+body[data-theme="sepia"] { background: #fbf0d9; }
+body[data-theme="sepia"] #sheet { filter: sepia(.2); }
+body[data-theme="dark"] { background: #1e1e1e; }
+body[data-theme="dark"] #sheet { filter: invert(.9) hue-rotate(180deg); }
