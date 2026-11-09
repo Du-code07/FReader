@@ -410,7 +410,7 @@ class _UniversalMediaReaderScreenState extends State<UniversalMediaReaderScreen>
     final dir = await getApplicationDocumentsDirectory();
     const supportedExts = [
       'epub', 'txt', 'pdf', 'jpg', 'jpeg', 'png', 'webp', 'cbz',
-      'docx', 'doc', 'hwpx', 'hwp', 'ppt', 'pptx'
+      'docx', 'doc', 'hwpx', 'hwp', 'ppt', 'pptx', 'xlsx', 'xlsm', 'xls'
     ];
     const imageExts = ['jpg', 'jpeg', 'png', 'webp'];
 
@@ -476,7 +476,7 @@ class _UniversalMediaReaderScreenState extends State<UniversalMediaReaderScreen>
       ),
     );
 
-    if (nextExt == 'txt' || nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx' || nextExt == 'doc' || nextExt == 'ppt' || nextExt == 'pptx') {
+    if (nextExt == 'txt' || nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx' || nextExt == 'doc' || nextExt == 'ppt' || nextExt == 'pptx' || nextExt == 'xlsx' || nextExt == 'xlsm' || nextExt == 'xls') {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(

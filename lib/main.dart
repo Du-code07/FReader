@@ -533,7 +533,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   // 10, 11 & 13. 워드(.docx, .doc), 한글(.hwpx, .hwp), 메모장(.txt) 뷰어 열람 지원 (YML 제외)
   static const _supportedExts = [
     'epub', 'txt', 'pdf', 'jpg', 'jpeg', 'png', 'webp', 'cbz',
-    'docx', 'doc', 'hwpx', 'hwp', 'ppt', 'pptx'
+    'docx', 'doc', 'hwpx', 'hwp', 'ppt', 'pptx', 'xlsx', 'xlsm', 'xls'
   ];
   static const _imageExts = ['jpg', 'jpeg', 'png', 'webp'];
 
@@ -1705,7 +1705,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     final displayName = _formatDisplayFileName(rawName);
     final ext = rawName.split('.').last.toLowerCase();
 
-    if (ext == 'txt' || ext == 'epub' || ext == 'hwp' || ext == 'hwpx' || ext == 'docx' || ext == 'doc' || ext == 'ppt' || ext == 'pptx') {
+    if (ext == 'txt' || ext == 'epub' || ext == 'hwp' || ext == 'hwpx' || ext == 'docx' || ext == 'doc' || ext == 'ppt' || ext == 'pptx' || ext == 'xlsx' || ext == 'xlsm' || ext == 'xls') {
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -2278,7 +2278,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
 
     final IconData fallbackIcon = lowerExt == 'pdf'
         ? Icons.picture_as_pdf
-        : (lowerExt == 'docx' || lowerExt == 'doc' || lowerExt == 'hwpx' || lowerExt == 'hwp' || lowerExt == 'ppt' || lowerExt == 'pptx')
+        : (lowerExt == 'docx' || lowerExt == 'doc' || lowerExt == 'hwpx' || lowerExt == 'hwp' || lowerExt == 'ppt' || lowerExt == 'pptx' || lowerExt == 'xlsx' || lowerExt == 'xlsm' || lowerExt == 'xls')
             ? Icons.description_outlined
             : (lowerExt == 'epub' || lowerExt == 'txt')
                 ? Icons.menu_book
@@ -3029,7 +3029,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                                 : Icon(
                                     lowerExt == 'pdf'
                                         ? Icons.picture_as_pdf
-                                        : (lowerExt == 'docx' || lowerExt == 'doc' || lowerExt == 'hwpx' || lowerExt == 'hwp' || lowerExt == 'ppt' || lowerExt == 'pptx')
+                                        : (lowerExt == 'docx' || lowerExt == 'doc' || lowerExt == 'hwpx' || lowerExt == 'hwp' || lowerExt == 'ppt' || lowerExt == 'pptx' || lowerExt == 'xlsx' || lowerExt == 'xlsm' || lowerExt == 'xls')
                                             ? Icons.description_outlined
                                             : (lowerExt == 'epub' || lowerExt == 'txt')
                                                 ? Icons.menu_book

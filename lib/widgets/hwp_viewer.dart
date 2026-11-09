@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../services/docx_layout_hints.dart';
@@ -27,6 +29,7 @@ class HwpViewer extends StatefulWidget {
   final bool spread;
   final bool rtl;
   final ValueChanged<int> onLoaded;
+  final ValueChanged<List<String>>? onSheetNames;
   final void Function(int page, int pageCount, String position, double progress)
   onLocation;
   final ValueChanged<String> onError;
@@ -42,6 +45,7 @@ class HwpViewer extends StatefulWidget {
     required this.spread,
     required this.rtl,
     required this.onLoaded,
+    this.onSheetNames,
     required this.onLocation,
     required this.onError,
     required this.onCancelled,
@@ -56,16 +60,18 @@ class _HwpViewerState extends State<HwpViewer> {
   bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
   bool get _isDoc => widget.filePath.toLowerCase().endsWith('.doc');
   bool get _isWord => _isDocx || _isDoc;
+  bool get _isSpreadsheet => RegExp(r'\.xls[xm]?$', caseSensitive: false).hasMatch(widget.filePath);
+  String get _spreadsheetFormat => widget.filePath.split('.').last.toLowerCase();
   bool get _isPresentation => RegExp(r'\.pptx?$', caseSensitive: false).hasMatch(widget.filePath);
   String get _presentationFormat => widget.filePath.toLowerCase().endsWith('.pptx') ? 'pptx' : 'ppt';
-  String get _format => _isPresentation ? _presentationFormat.toUpperCase() : _isDocx
+  String get _format => _isSpreadsheet ? _spreadsheetFormat.toUpperCase() : _isPresentation ? _presentationFormat.toUpperCase() : _isDocx
       ? 'DOCX'
       : _isDoc
       ? 'DOC'
       : 'HWP';
   String get _entry =>
-      '$_origin/assets/flutter_assets/assets/${_isPresentation ? 'ppt' : _isWord ? 'docx' : 'hwp'}/index.html';
-  String get _jsObject => _isPresentation ? 'freaderPpt' : _isWord ? 'freaderDocx' : 'freaderHwp';
+      '$_origin/assets/flutter_assets/assets/${_isSpreadsheet ? 'xlsx' : _isPresentation ? 'ppt' : _isWord ? 'docx' : 'hwp'}/index.html';
+  String get _jsObject => _isSpreadsheet ? 'freaderXlsx' : _isPresentation ? 'freaderPpt' : _isWord ? 'freaderDocx' : 'freaderHwp';
   Map<String, Object> _docxLayout = {};
   static const _maxBytes = 256 * 1024 * 1024;
   static const _chunkBytes = 192 * 1024;
@@ -87,6 +93,7 @@ class _HwpViewerState extends State<HwpViewer> {
     'progress': widget.initialProgress,
     if (_isWord) 'format': _isDoc ? 'doc' : 'docx',
     if (_isPresentation) 'format': _presentationFormat,
+    if (_isSpreadsheet) 'format': _spreadsheetFormat,
     if (_isDocx) 'docxLayout': _docxLayout,
   };
 
@@ -203,6 +210,11 @@ class _HwpViewerState extends State<HwpViewer> {
         _timeout?.cancel();
         unawaited(_invoke('configure', [_options]));
         widget.onLoaded((event['pageCount'] as num).toInt());
+        if (_isSpreadsheet && event['chapters'] is List) {
+          widget.onSheetNames?.call(
+            (event['chapters'] as List).map((name) => name.toString()).toList(),
+          );
+        }
         break;
       case 'location':
         if (!_loaded) return;
@@ -300,6 +312,9 @@ class _HwpViewerState extends State<HwpViewer> {
       fit: StackFit.expand,
       children: [
         InAppWebView(
+          gestureRecognizers: _isSpreadsheet
+              ? {Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer())}
+              : null,
           initialUrlRequest: URLRequest(url: WebUri(_entry)),
           initialSettings: InAppWebViewSettings(
             javaScriptEnabled: true,

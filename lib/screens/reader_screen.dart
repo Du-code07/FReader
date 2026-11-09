@@ -87,10 +87,12 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
   final HwpReaderController _hwpController = HwpReaderController();
   final TxtPageController _txtController = TxtPageController();
   bool get _isTxt => widget.filePath.toLowerCase().endsWith('.txt');
-  bool get _isOfflineDocument => RegExp(r'\.(hwp|hwpx|docx|doc|txt|ppt|pptx)$', caseSensitive: false).hasMatch(widget.filePath);
+  bool get _isOfflineDocument => RegExp(r'\.(hwp|hwpx|docx|doc|txt|ppt|pptx|xlsx|xlsm|xls)$', caseSensitive: false).hasMatch(widget.filePath);
+  bool get _isSpreadsheet => RegExp(r'\.xls[xm]?$', caseSensitive: false).hasMatch(widget.filePath);
   bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
   bool get _isPresentation => RegExp(r'\.pptx?$', caseSensitive: false).hasMatch(widget.filePath);
-  String get _documentPositionPrefix => _isPresentation
+  String get _documentPositionPrefix => _isSpreadsheet
+      ? widget.filePath.split('.').last.toLowerCase() : _isPresentation
       ? (widget.filePath.toLowerCase().endsWith('.pptx') ? 'pptx' : 'ppt')
       : _isTxt ? 'txt' : _isDocx
       ? 'docx'
@@ -388,7 +390,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     final dir = await getApplicationDocumentsDirectory();
     const supportedExts = [
       'epub', 'txt', 'pdf', 'jpg', 'jpeg', 'png', 'webp', 'cbz',
-      'docx', 'doc', 'hwpx', 'hwp', 'ppt', 'pptx'
+      'docx', 'doc', 'hwpx', 'hwp', 'ppt', 'pptx', 'xlsx', 'xlsm', 'xls'
     ];
     const imageExts = ['jpg', 'jpeg', 'png', 'webp'];
 
@@ -444,7 +446,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       ),
     );
 
-    if (nextExt == 'txt' || nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx' || nextExt == 'doc' || nextExt == 'ppt' || nextExt == 'pptx') {
+    if (nextExt == 'txt' || nextExt == 'epub' || nextExt == 'hwp' || nextExt == 'hwpx' || nextExt == 'docx' || nextExt == 'doc' || nextExt == 'ppt' || nextExt == 'pptx' || nextExt == 'xlsx' || nextExt == 'xlsm' || nextExt == 'xls') {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -508,7 +510,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     final savedCfi = await StorageService.getLastPosition(widget.filePath);
     final prevCfi = await StorageService.getPreviousPosition(widget.filePath);
     var savedProg = await StorageService.getProgress(widget.filePath);
-    if (_isOfflineDocument && !_isPresentation && savedCfi == null) {
+    if (_isOfflineDocument && !_isPresentation && !_isSpreadsheet && savedCfi == null) {
       // Preserve approximate reading progress from the previous EPUB conversion.
       // Its CFI and annotations remain stored under the old file; never treat an
       // EPUB location as a HWP physical page or overwrite the old metadata.
@@ -611,6 +613,16 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       if (mounted && relocation == _hwpRelocation) setState(() => _epubStrokes = strokes);
   }
 
+  void _onSheetNames(List<String> names) {
+    if (!mounted || !_isSpreadsheet) return;
+    setState(() {
+      _chapters = List.generate(names.length, (index) => EpubChapter(
+        title: names[index], href: '$_documentPositionPrefix:$index',
+        id: '$_documentPositionPrefix:$index', subitems: const [],
+      ));
+    });
+  }
+
   Widget _buildHwpViewer(bool isLandscape) {
     if (_isTxt) {
       return TxtPagedViewer(
@@ -640,6 +652,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
       onLocation: _onDocumentLocation,
       onError: _handleReaderLoadError,
       onCancelled: () { if (mounted) Navigator.of(context).pop(); },
+      onSheetNames: _onSheetNames,
     );
   }
 
@@ -1294,7 +1307,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     final distance = (event.position - _pointerDownPosition!).distance;
     final duration = DateTime.now().difference(_pointerDownTime!).inMilliseconds;
 
-    if (_isOfflineDocument && _useSwipeTurn && _epubZoomScale <= 1.03 && duration < 1200) {
+    if (_isOfflineDocument && !_isSpreadsheet && _useSwipeTurn && _epubZoomScale <= 1.03 && duration < 1200) {
       final delta = event.position - _pointerDownPosition!;
       if (delta.dx.abs() > 60 && delta.dx.abs() > delta.dy.abs() * 1.5) {
         if (delta.dx < 0) { _turnNext(); } else { _turnPrev(); }
@@ -1770,8 +1783,8 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
                     },
                     child: InteractiveViewer(
                       transformationController: _epubZoomController,
-                      panEnabled: !_isMemoMode && _epubZoomScale > 1.03,
-                      scaleEnabled: !_isTouchLocked && (!_isMemoMode || !_allowFingerDrawing),
+                      panEnabled: !_isSpreadsheet && !_isMemoMode && _epubZoomScale > 1.03,
+                      scaleEnabled: !_isSpreadsheet && !_isTouchLocked && (!_isMemoMode || !_allowFingerDrawing),
                       minScale: 1.0,
                       maxScale: 4.5,
                       onInteractionUpdate: (_) {
@@ -1793,7 +1806,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
                       },
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
-                        onHorizontalDragUpdate: !_useSwipeTurn ? (_) {} : null,
+                        onHorizontalDragUpdate: !_isSpreadsheet && !_useSwipeTurn ? (_) {} : null,
                         child: _isOfflineDocument ? _buildHwpViewer(isLandscape) : EpubViewer(
                           key: ValueKey(viewerKey),
                           epubController: _epubController,
