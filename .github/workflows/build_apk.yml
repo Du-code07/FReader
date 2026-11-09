@@ -552,7 +552,7 @@ jobs:
               content = (root / name).read_bytes()
               assert len(content) == expected['bytes'], f'Wrong DOCX asset size: {name}'
               assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong DOCX asset checksum: {name}'
-          for name in ['index.html', 'reader.js', 'reader.css', 'docx_layout.js', 'worker.js', 'rtf_images.js', 'rtf_layout.js', 'THIRD_PARTY_NOTICES.txt']:
+          for name in ['index.html', 'reader.js', 'reader.css', 'docx_layout.js', 'docx_charts.js', 'worker.js', 'rtf_images.js', 'rtf_layout.js', 'THIRD_PARTY_NOTICES.txt']:
               assert (root.parent / name).is_file(), f'Missing DOCX asset: {name}'
           root = Path('assets/docx/metafile')
           provenance = json.loads((root / 'PROVENANCE.json').read_text())
@@ -589,7 +589,7 @@ jobs:
               content = (root / name).read_bytes()
               assert len(content) == expected['bytes'], f'Wrong TXT notice size: {name}'
               assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong TXT notice checksum: {name}'
-          for source in ('lib/services/txt_reader_service.dart', 'lib/services/txt_page_document.dart', 'lib/widgets/txt_paged_viewer.dart'):
+          for source in ('lib/services/txt_reader_service.dart', 'lib/services/txt_page_document.dart', 'lib/widgets/txt_paged_viewer.dart', 'lib/services/epub_validation.dart'):
               assert Path(source).is_file(), f'Missing required source: {source}'
           vendor = Path('vendor/flutter_epub_viewer')
           pinned = json.loads((vendor / 'FREADER_PROVENANCE.json').read_text())
@@ -601,7 +601,7 @@ jobs:
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         run: |
           set -euo pipefail
-          BUILD_NUM=$((130 + ${{ github.run_number }}))
+          BUILD_NUM=$((131 + ${{ github.run_number }}))
           flutter pub get
           # Regression helpers are optional repository files, not app assets.
           # Run them when uploaded; a failed test still stops the build.
