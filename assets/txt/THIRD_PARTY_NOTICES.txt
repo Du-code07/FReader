@@ -9,3 +9,7 @@ No account, remote document upload, payment, or runtime network download is requ
 The original TXT file is never modified.
 
 See the accompanying license files and PROVENANCE.json for upstream sources.
+
+FReader v46: flutter_epub_viewer 2.2.1 is now bundled under vendor/flutter_epub_viewer.
+The Android transport is patched to serve assets and EPUB chapters on the same local HTTPS origin.
+See that directory's LICENSE, FREADER_PATCH.txt and FREADER_PROVENANCE.json.

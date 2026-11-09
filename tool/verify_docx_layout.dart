@@ -8,7 +8,13 @@ void check(bool condition, String message) {
   if (!condition) throw StateError(message);
 }
 
-void main() {
+void main(List<String> args) {
+  if (args.length == 3 && args.first == '--dump') {
+    final hints = DocxLayoutHints.readLayout(args[1]);
+    if (hints.isEmpty) throw StateError('DOCX layout could not be read');
+    File(args[2]).writeAsStringSync(jsonEncode(hints));
+    return;
+  }
   final dir = Directory.systemTemp.createTempSync('freader-docx-test-');
   try {
     const w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -17,7 +23,9 @@ void main() {
 <w:p><w:pPr><w:pStyle w:val="child"/><w:ind w:hanging="360"/><w:tabs><w:tab w:val="center" w:pos="1440"/><w:tab w:val="right" w:pos="2880" w:leader="dot"/></w:tabs></w:pPr><w:r><w:rPr><w:spacing w:val="-20"/></w:rPr><w:t>한글😀</w:t><w:tab/><w:t>끝</w:t><w:lastRenderedPageBreak/><w:t>다음</w:t><w:br w:type="page"/><w:t>끝</w:t></w:r></w:p>
 <w:tbl><w:tblPr><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="3000"/></w:tblGrid><w:tr><w:trPr><w:trHeight w:val="360" w:hRule="atLeast"/></w:trPr><w:tc><w:tcPr><w:shd w:fill="E5E5E5"/><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>표</w:t></w:r></w:p></w:tc><w:tc><w:p/></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:p/></w:tc></w:tr></w:tbl>
 <w:p><w:pPr><w:pStyle w:val="cycle"/><w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440"/></w:sectPr></w:pPr></w:p>
-<w:p><w:r><w:t>가로 페이지</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="16838" w:h="11906"/></w:sectPr>
+<w:p><w:r><w:t>가로 페이지</w:t></w:r></w:p>
+<w:p><w:r><w:lastRenderedPageBreak/><w:drawing/></w:r><w:r><w:lastRenderedPageBreak/><w:drawing/></w:r><w:r><w:br w:type="page"/><w:drawing/></w:r></w:p>
+<w:sectPr><w:pgSz w:w="16838" w:h="11906"/></w:sectPr>
 </w:body></w:document>''',
       'word/styles.xml':
           '''<w:styles xmlns:w="$w"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:asciiTheme="minorHAnsi" w:eastAsiaTheme="minorEastAsia"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:styleId="base" w:type="paragraph" w:default="1"><w:pPr><w:ind w:left="720"/><w:keepNext/></w:pPr></w:style><w:style w:styleId="child"><w:basedOn w:val="base"/><w:pPr><w:ind w:right="240"/></w:pPr></w:style><w:style w:styleId="cycle"><w:basedOn w:val="cycle"/></w:style></w:styles>''',
@@ -57,6 +65,13 @@ void main() {
       'East Asian theme font',
     );
     check(h['defaultTab'] == 800, 'Document default tab stop');
+    final pictures = (h['paragraphs'] as List).last;
+    check(pictures['drawingCount'] == 3, 'Picture count');
+    check(
+      jsonEncode(pictures['drawingBreaks']) ==
+          '[{"index":0,"cached":true},{"index":1,"cached":true},{"index":2,"cached":false}]',
+      'Page breaks between pictures at the same text offset were lost',
+    );
     final table = (h['tables'] as List).single;
     check(table['grid'].join(',') == '2000.0,3000.0', 'Table grid');
     check(

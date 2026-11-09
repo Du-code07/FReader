@@ -1,0 +1,14 @@
+FReader v46 Android transport patch
+
+Upstream: flutter_epub_viewer 2.2.1 (BSD-3-Clause; see LICENSE).
+The lib/ tree, LICENSE, README.md and pubspec.yaml are vendored from the published package.
+
+Changed upstream files:
+- lib/src/platform/epub_web_view_io.dart: Android WebViewAssetLoader uses HTTPS assets, with file cross-origin access disabled.
+- lib/src/server/epub_book_server.dart: same-origin /books/<token>/ URL routing; assets bypass book routing.
+- lib/src/epub_viewer.dart: await and report native bridge start errors.
+
+Book chapters are read from disk on demand. No external document upload or local HTTP port on Android.
+The app uses this package by path; upload this entire folder with pubspec.yaml.
+Original upstream documentation is kept unchanged and may describe the upstream transport.
+Original license and Epub.js licenses remain in the shipped tree/assets.

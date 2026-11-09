@@ -47,5 +47,6 @@
       "sha256": "8663e726f4194e1a34913b223c2e4745ed06f3ec645a66a41ab70b735070b692",
       "bytes": 1516
     }
-  }
+  },
+  "local_epub_transport": "vendor/flutter_epub_viewer/FREADER_PROVENANCE.json"
 }

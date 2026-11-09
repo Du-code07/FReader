@@ -34,6 +34,7 @@ body[data-theme="dark"] .page img { filter: invert(1) hue-rotate(180deg); }
 .docx-layout x-s { tab-size: var(--docx-tab, .5in); }
 .docx-table { border-collapse: collapse; }
 .docx-table td { box-sizing: border-box; }
+.docx-fitted-table td, .docx-fitted-table th { min-width: 0; overflow-wrap: anywhere; }
 .docx-layout img { max-width: 100%; object-fit: contain; }
 
 .docx-layout .docx-toc-entry { display: flex !important; align-items: baseline; gap: .25em; text-align: left !important; }

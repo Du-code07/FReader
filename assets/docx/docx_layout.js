@@ -211,11 +211,125 @@ export function applyDocxLayout(root, layout) {
   sections(root, layout.sections || [], matches);
   for (const hint of layout.paragraphs) {
     const p = matches.get(hint.index); if (!p) continue;
+    const images = [...p.querySelectorAll('img')];
     const explicit = new Set(hint.breaks), offsets = [...new Set([...hint.breaks, ...hint.cachedBreaks])].sort((a,b) => b-a);
     for (const offset of offsets) splitAt(p, offset, !explicit.has(offset));
+    // Text offsets alone cannot distinguish breaks between adjacent pictures:
+    // a paragraph with ten pictures and no text has ten boundaries at offset 0.
+    if (images.length === hint.drawingCount) {
+      for (const br of [...(hint.drawingBreaks || [])].reverse()) {
+        const img = images[br.index], paragraph = img?.closest('x-p');
+        if (!paragraph || paragraph.closest('td,th')) continue;
+        const frame = img.parentElement?.localName === 'div' ? img.parentElement : img;
+        const range = paragraph.ownerDocument.createRange();
+        range.setStart(paragraph, 0); range.setEndBefore(frame);
+        const before = range.cloneContents();
+        if (!before.textContent.trim() && !before.querySelector('img')) {
+          paragraph.style.breakBefore = 'column'; continue;
+        }
+        range.setStartBefore(frame); range.setEnd(paragraph, paragraph.childNodes.length);
+        const next = paragraph.cloneNode(false); next.append(range.extractContents());
+        next.style.breakBefore = 'column'; next.style.textIndent = '0'; next.style.marginTop = '0';
+        paragraph.after(next);
+      }
+    }
   }
   root.querySelectorAll('.odr-page-inner').forEach(x => x.classList.add('docx-layout'));
   return true;
+}
+
+// Fit only content that exceeds its printable width. Font substitution can
+// increase a table's minimum width beyond the saved OOXML grid; with adjacent
+// CSS columns that overflow used to appear over text on the following page.
+export function fitDocxContent(inner, bodyWidth, bodyHeight) {
+  inner.style.width = `${bodyWidth}px`;
+  for (const table of inner.querySelectorAll('table')) {
+    const css = getComputedStyle(table), parent = table.parentElement;
+    const parentWidth = parent === inner ? bodyWidth : parent.clientWidth
+      - (parseFloat(getComputedStyle(parent).paddingLeft) || 0)
+      - (parseFloat(getComputedStyle(parent).paddingRight) || 0);
+    const available = Math.max(24, parentWidth - (parseFloat(css.marginLeft) || 0)
+      - (parseFloat(css.marginRight) || 0));
+    if (table.getBoundingClientRect().width <= available + .5) continue;
+    const cols = [...table.querySelectorAll(':scope > colgroup > col')];
+    const widths = cols.map(c => c.getBoundingClientRect().width);
+    const total = widths.reduce((a, b) => a + b, 0);
+    Object.assign(table.style, { tableLayout: 'fixed', width: `${available}px`, minWidth: '0' });
+    if (total > 0) cols.forEach((col, i) => Object.assign(col.style,
+      { width: `${widths[i] / total * 100}%`, minWidth: '0' }));
+    table.classList.add('docx-fitted-table');
+  }
+  for (const img of inner.querySelectorAll('img')) {
+    const frame = img.parentElement;
+    if (frame?.localName !== 'div' || !frame.style.width || !frame.style.height) continue;
+    const rect = frame.getBoundingClientRect();
+    if (!(rect.width > 0 && rect.height > 0)) continue;
+    const container = frame.closest('td,th') || frame.closest('x-p') || inner;
+    const css = getComputedStyle(container), fc = getComputedStyle(frame);
+    const available = Math.max(1, container.clientWidth
+      - (parseFloat(css.paddingLeft) || 0) - (parseFloat(css.paddingRight) || 0)
+      - Math.max(0, parseFloat(fc.marginLeft) || 0) - Math.max(0, parseFloat(fc.marginRight) || 0));
+    const scale = Math.min(1, available / rect.width, bodyHeight / rect.height);
+    if (scale < 1) {
+      frame.style.width = `${rect.width * scale}px`;
+      frame.style.height = `${rect.height * scale}px`;
+    }
+    // Core exports a single picture as an absolutely positioned img in a
+    // sized frame. Keep it in normal flow so Chromium cannot fragment its
+    // containing block separately from the image. Do not touch layered shapes.
+    if (frame.children.length === 1 && frame.firstElementChild === img &&
+        img.style.left === '0px' && img.style.top === '0px' &&
+        img.style.width === '100%' && img.style.height === '100%') {
+      img.style.position = 'static'; img.style.display = 'block';
+    }
+    frame.style.breakInside = 'avoid';
+  }
+  // Chromium's multicol table fragmentation can place a later cell relative to
+  // the preceding column, even when tr has break-inside:avoid. Materialize safe
+  // row groups as independent tables, preserving widths and merged-cell spans.
+  for (const table of [...inner.querySelectorAll('table')].reverse()) {
+    const rows = [...table.rows]; if (!rows.length) continue;
+    const firstBreak = rows[0].style.breakBefore;
+    if (firstBreak === 'column') {
+      table.style.breakBefore = 'column'; rows[0].style.breakBefore = 'auto';
+    }
+    const forced = rows.some((r, i) => i > 0 && r.style.breakBefore === 'column');
+    if (!forced && table.getBoundingClientRect().height <= bodyHeight) continue;
+    const groups = [];
+    for (let start = 0; start < rows.length;) {
+      let end = start + 1;
+      for (let i = start; i < end; i++) for (const cell of rows[i].cells)
+        end = Math.max(end, Math.min(rows.length, cell.rowSpan === 0 ? rows.length : i + cell.rowSpan));
+      groups.push(rows.slice(start, end)); start = end;
+    }
+    if (groups.length < 2) continue;
+    const width = table.getBoundingClientRect().width;
+    const cols = [...table.querySelectorAll(':scope > colgroup > col')];
+    const colWidths = cols.map(c => c.getBoundingClientRect().width);
+    const chunks = []; let chunk = [], height = 0;
+    for (const group of groups) {
+      const h = group.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
+      if (chunk.length && (group[0].style.breakBefore === 'column' || height + h > bodyHeight - 2)) {
+        chunks.push(chunk); chunk = []; height = 0;
+      }
+      chunk.push(...group); height += h;
+    }
+    if (chunk.length) chunks.push(chunk);
+    if (chunks.length < 2) continue;
+    for (let i = 0; i < chunks.length; i++) {
+      const copy = table.cloneNode(false), body = document.createElement('tbody');
+      Object.assign(copy.style, { width: `${width}px`, tableLayout: 'fixed', breakInside: 'avoid', breakBefore: i ? 'auto' : table.style.breakBefore });
+      for (const colgroup of table.querySelectorAll(':scope > colgroup')) copy.append(colgroup.cloneNode(true));
+      [...copy.querySelectorAll('col')].forEach((col, n) => {
+        if (colWidths[n] > 0) Object.assign(col.style, { width: `${colWidths[n]}px`, minWidth: '0' });
+      });
+      if (chunks[i][0].style.breakBefore === 'column') {
+        copy.style.breakBefore = 'column'; chunks[i][0].style.breakBefore = 'auto';
+      }
+      body.append(...chunks[i]); copy.append(body); table.before(copy);
+    }
+    table.remove();
+  }
 }
 
 // Resolve tab stops against the actual fonts and text width, before pagination.

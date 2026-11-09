@@ -1,4 +1,4 @@
-import { applyDocxLayout, finalizeDocxLayout } from './docx_layout.js';
+import { applyDocxLayout, finalizeDocxLayout, fitDocxContent } from './docx_layout.js';
 // Read-only adapter for OpenDocument.core. All assets and documents stay local.
 const host = document.getElementById('pages');
 const measure = document.getElementById('measure');
@@ -242,6 +242,7 @@ async function preparePages(html, current) {
     const bodyWidth = Math.max(32, width - margin[1] - margin[3]);
     const bodyHeight = Math.max(32, height - margin[0] - margin[2]);
     if (inner.classList.contains('docx-layout')) {
+      fitDocxContent(inner, bodyWidth, bodyHeight);
       // Chromium can fragment a short merged-cell table and leave border-only
       // fragments in later columns. Keep a table together if it fits one page;
       // long tables still paginate row by row without clipping their contents.
@@ -258,10 +259,14 @@ async function preparePages(html, current) {
     Object.assign(clip.style, { left: `${margin[3]}px`, top: `${margin[0]}px`, width: `${bodyWidth}px`, height: `${bodyHeight}px` });
     inner.replaceWith(clip); clip.appendChild(inner);
     inner.classList.add('freader-columns');
-    Object.assign(inner.style, { width: `${bodyWidth}px`, height: `${bodyHeight}px`, columnWidth: `${bodyWidth}px` });
-    const columns = Math.max(1, Math.ceil((inner.scrollWidth - 1) / bodyWidth));
+    // Separate virtual pages so overflow ink from one column cannot be painted
+    // onto the next. Tables/images are fitted above; the gap is never displayed.
+    const columnGap = inner.classList.contains('docx-layout') ? bodyWidth : 0;
+    const columnStride = bodyWidth + columnGap;
+    Object.assign(inner.style, { width: `${bodyWidth}px`, height: `${bodyHeight}px`, columnWidth: `${bodyWidth}px`, columnGap: `${columnGap}px` });
+    const columns = Math.max(1, Math.ceil((inner.scrollWidth + columnGap - 1) / columnStride));
     if (result.length + columns > 10000) throw new Error('표시할 Word 문서 페이지 수가 너무 많습니다.');
-    for (let column = 0; column < columns; column++) result.push({ source, column, width, height, bodyWidth, sectionPageCount: columns });
+    for (let column = 0; column < columns; column++) result.push({ source, column, width, height, bodyWidth, columnStride, sectionPageCount: columns });
   }
   pages = result;
 }
@@ -317,7 +322,7 @@ async function render() {
     frame.dataset.width = String(entry.width); frame.dataset.height = String(entry.height);
     frame.setAttribute('aria-label', `${index + 1} / ${pages.length}`);
     const source = used.has(entry.source) ? entry.source.cloneNode(true) : entry.source; used.add(entry.source);
-    source.querySelector('.freader-columns').style.transform = `translateX(${-entry.column * entry.bodyWidth}px)`;
+    source.querySelector('.freader-columns').style.transform = `translateX(${-entry.column * entry.columnStride}px)`;
     if (source.classList.contains('rtf-paper')) {
       const start = Number(source.dataset.rtfStart), number = start > 0 ? start + entry.column : index + 1;
       for (const field of source.querySelectorAll('[data-rtf-field]')) {

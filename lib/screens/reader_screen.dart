@@ -1789,9 +1789,10 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
                           key: ValueKey(viewerKey),
                           epubController: _epubController,
                     epubSource: _epubSource,
-                    // Avoid file:// -> intercepted HTTPS/XHR restrictions in
-                    // vendor WebViews. All content comes from the local EPUB.
-                    useLocalServer: !Platform.isAndroid,
+                    // The patched reader serves Android assets and chapters
+                    // from the same local HTTPS origin, without a whole-book
+                    // base64 payload or file:// cross-origin requests.
+                    useLocalServer: true,
                     initialCfi: _currentCfi ?? _initialCfi,
                     onEpubLoaded: () {
                       if (!mounted || _watchdogKey != viewerKey) return;
