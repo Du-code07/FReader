@@ -9,9 +9,6 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    env:
-      FREADER_GRADLE_VERSION: '8.12'
-      FREADER_GRADLE_SHA256: '7a00d51fb93147819aab76024feece20b6b84e420694101f276be952e08bef03'
     steps:
       - name: 1. Checkout Source
         uses: actions/checkout@v4
@@ -26,7 +23,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.35.7'
+          flutter-version: '3.47.9'
 
       - name: 4. Generate Android Platform Files & Configure FReader Store Release (com.freader.my_ebook_reader)
         run: |
@@ -44,10 +41,8 @@ jobs:
             exit 1
           fi
 
-          rm -f sample_japanese_test_book.epub
           mkdir -p /tmp/v7_backup
           cp -rf lib /tmp/v7_backup/
-          cp -rf assets /tmp/v7_backup/
           cp -f pubspec.yaml /tmp/v7_backup/
           cp -rf android_override /tmp/v7_backup/
 
@@ -56,7 +51,6 @@ jobs:
 
           rm -rf lib test
           cp -rf /tmp/v7_backup/lib .
-          cp -rf /tmp/v7_backup/assets .
           cp -f /tmp/v7_backup/pubspec.yaml .
 
           mkdir -p android/app/src/main/kotlin/com/freader/my_ebook_reader
@@ -93,33 +87,6 @@ jobs:
 
           touch android/app/proguard-rules.pro
 
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/compileSdk .*/compileSdk 36/g' android/app/build.gradle
-            sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' android/app/build.gradle
-            sed -i 's/minSdkVersion .*/minSdkVersion 24/g' android/app/build.gradle
-            sed -i 's/minSdk = .*/minSdk = 24/g' android/app/build.gradle
-            sed -i 's/minSdk .*/minSdk 24/g' android/app/build.gradle
-            echo "" >> android/app/build.gradle
-            echo "android {" >> android/app/build.gradle
-            echo "    signingConfigs {" >> android/app/build.gradle
-            echo "        release {" >> android/app/build.gradle
-            echo "            storeFile file('freader_release.keystore')" >> android/app/build.gradle
-            echo "            storePassword 'freader2026!'" >> android/app/build.gradle
-            echo "            keyAlias 'freader_key'" >> android/app/build.gradle
-            echo "            keyPassword 'freader2026!'" >> android/app/build.gradle
-            echo "        }" >> android/app/build.gradle
-            echo "    }" >> android/app/build.gradle
-            echo "    buildTypes {" >> android/app/build.gradle
-            echo "        release {" >> android/app/build.gradle
-            echo "            signingConfig signingConfigs.release" >> android/app/build.gradle
-            echo "            minifyEnabled false" >> android/app/build.gradle
-            echo "            shrinkResources false" >> android/app/build.gradle
-            echo "            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'" >> android/app/build.gradle
-            echo "        }" >> android/app/build.gradle
-            echo "    }" >> android/app/build.gradle
-            echo "}" >> android/app/build.gradle
-          fi
-
           if [ -f android/app/build.gradle.kts ]; then
             sed -i 's/compileSdk = .*/compileSdk = 36/g' android/app/build.gradle.kts
             sed -i 's/minSdk = .*/minSdk = 24/g' android/app/build.gradle.kts
@@ -142,19 +109,10 @@ jobs:
             echo '        }' >> android/app/build.gradle.kts
             echo '    }' >> android/app/build.gradle.kts
             echo '}' >> android/app/build.gradle.kts
-          fi
-
-          if [ -f android/build.gradle ]; then
-            sed -i '/evaluationDependsOn/d' android/build.gradle
-            echo "" >> android/build.gradle
-            echo "subprojects {" >> android/build.gradle
-            echo "    afterEvaluate { project ->" >> android/build.gradle
-            echo '        if (project.hasProperty("android")) {' >> android/build.gradle
-            echo "            project.android { compileSdkVersion 36 }" >> android/build.gradle
-            echo "        }" >> android/build.gradle
-            echo "    }" >> android/build.gradle
-            echo "}" >> android/build.gradle
-            echo 'subprojects { project.evaluationDependsOn(":app") }' >> android/build.gradle
+            # 그림 속 글자 읽기(OCR, 한국어+영어) — 그림으로만 된 PPT의 목차용. 인식 모델은 앱에 포함되어 인터넷 없이 동작
+            echo 'dependencies {' >> android/app/build.gradle.kts
+            echo '    implementation("com.google.mlkit:text-recognition-korean:16.0.1")' >> android/app/build.gradle.kts
+            echo '}' >> android/app/build.gradle.kts
           fi
 
           if [ -f android/build.gradle.kts ]; then
@@ -174,8 +132,8 @@ jobs:
 
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST" ]; then
-            # Flutter's template grants INTERNET to debug/profile only. WebView
-            # book requests need it in the RELEASE manifest too (no runtime dialog).
+            # Flutter 템플릿은 INTERNET 권한을 debug/profile에만 넣는다. 릴리스 APK의 WebView(EPUB/문서 뷰어)도
+            # 정상 동작하도록 릴리스 매니페스트에도 추가 (실행 중 권한 요청 팝업 없음)
             if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
               sed -i '/<application/i\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
             fi
@@ -194,600 +152,206 @@ jobs:
             fi
           done
 
-      - name: 4a. Restore verified Gradle distribution cache
-        id: gradle-dist-cache
-        uses: actions/cache/restore@v4
+      - name: 4a. Restore Gradle cache
+        uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/freader-gradle-distributions
-          key: freader-gradle-bin-v1-${{ runner.os }}-${{ env.FREADER_GRADLE_VERSION }}-${{ env.FREADER_GRADLE_SHA256 }}
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/caches/jars-9
+            ~/.gradle/wrapper/dists
+            ${{ runner.temp }}/freader-gradle-dists
+            !~/.gradle/caches/modules-2/*.lock
+          key: freader-gradle-v3-${{ runner.os }}-flutter3.47.9-${{ hashFiles('pubspec.yaml') }}
+          restore-keys: |
+            freader-gradle-v3-${{ runner.os }}-flutter3.47.9-
 
-      - name: 4b. Prepare Gradle with retries and checksum verification
-        timeout-minutes: 20
+      - name: 4b. Download Gradle distribution with retries (avoid GitHub 504)
         shell: bash
         run: |
           set -euo pipefail
-
-          # Pin the same Gradle version as Flutter 3.35.7. Only the distribution type
-          # changes: -bin contains everything needed to build, without sources/docs.
-          DIST_DIR="$RUNNER_TEMP/freader-gradle-distributions"
-          DIST_ZIP="$DIST_DIR/gradle-${FREADER_GRADLE_VERSION}-bin.zip"
-          export FREADER_GRADLE_ZIP="$DIST_ZIP"
+          WRAPPER=android/gradle/wrapper/gradle-wrapper.properties
+          GV=$(grep '^distributionUrl' "$WRAPPER" | sed -E 's/.*gradle-([0-9][0-9.]*(-[a-z0-9-]+)?)-(all|bin)\.zip.*/\1/')
+          echo "Gradle version: $GV"
+          DIST_DIR="$RUNNER_TEMP/freader-gradle-dists"
+          ZIP="$DIST_DIR/gradle-$GV-bin.zip"
           mkdir -p "$DIST_DIR"
 
-          verify_gradle() {
-            [ -s "$1" ] && printf '%s  %s\n' "$FREADER_GRADLE_SHA256" "$1" | sha256sum --check --status
-          }
+          # 공식 체크섬 (작은 파일이라 GitHub를 거치지 않음)
+          SHA=$(curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 \
+            "https://services.gradle.org/distributions/gradle-$GV-bin.zip.sha256" | tr -d '[:space:]')
+          if ! [[ "$SHA" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Gradle 체크섬을 가져오지 못했습니다: '$SHA'"; exit 1
+          fi
 
-          if ! verify_gradle "$DIST_ZIP"; then
-            rm -f "$DIST_ZIP" "$DIST_ZIP.part"
-            # Both official hosts can redirect to the same GitHub endpoint.
-            # The mirror is accepted ONLY when the pinned official SHA-256 matches.
-            for BASE_URL in https://downloads.gradle.org/distributions https://services.gradle.org/distributions https://mirrors.cloud.tencent.com/gradle; do
-              echo "Downloading Gradle ${FREADER_GRADLE_VERSION} from $BASE_URL"
-              if curl --fail --location --show-error --silent \
-                --retry 2 --retry-delay 5 --retry-all-errors --retry-max-time 180 \
-                --connect-timeout 20 --max-time 180 \
-                "$BASE_URL/gradle-${FREADER_GRADLE_VERSION}-bin.zip" \
-                --output "$DIST_ZIP.part"; then
-                if verify_gradle "$DIST_ZIP.part"; then
-                  mv "$DIST_ZIP.part" "$DIST_ZIP"
-                  break
+          ok() { [ -s "$1" ] && echo "$SHA  $1" | sha256sum --check --status; }
+
+          if ! ok "$ZIP"; then
+            rm -f "$ZIP"
+            for ROUND in 1 2 3; do
+              for URL in \
+                "https://services.gradle.org/distributions/gradle-$GV-bin.zip" \
+                "https://mirrors.cloud.tencent.com/gradle/gradle-$GV-bin.zip" \
+                "https://mirrors.aliyun.com/gradle/distributions/v$GV/gradle-$GV-bin.zip"; do
+                echo "[$ROUND] $URL"
+                if curl -fSL --silent --show-error --retry 2 --retry-delay 5 --retry-all-errors \
+                     --connect-timeout 20 --max-time 300 "$URL" -o "$ZIP.part" && ok "$ZIP.part"; then
+                  mv "$ZIP.part" "$ZIP"; break 2
                 fi
-                echo "::warning::Gradle download failed SHA-256 verification; trying the next endpoint."
-              fi
-              rm -f "$DIST_ZIP.part"
+                rm -f "$ZIP.part"
+              done
+              sleep $((ROUND * 15))
             done
           fi
+          ok "$ZIP" || { echo "::error::Gradle 배포판 다운로드 실패"; exit 1; }
 
-          if ! verify_gradle "$DIST_ZIP"; then
-            echo "::error::Gradle download failed after retries. No unverified archive will be used."
-            exit 1
-          fi
+          # 래퍼가 네트워크 대신 검증된 로컬 파일을 쓰도록 변경
+          sed -i '/^distributionUrl=/d;/^distributionSha256Sum=/d;/^networkTimeout=/d' "$WRAPPER"
+          {
+            echo "distributionUrl=file\://$ZIP"
+            echo "distributionSha256Sum=$SHA"
+            echo "networkTimeout=60000"
+          } >> "$WRAPPER"
+          cat "$WRAPPER"
 
-          # Flutter recreates android/ earlier in this job, so patch the newly generated
-          # wrapper HERE. The wrapper now installs from a verified local file and cannot
-          # hit the GitHub redirect/504 during assembleRelease or bundleRelease.
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-
-          wrapper = Path('android/gradle/wrapper/gradle-wrapper.properties')
-          updates = {
-              'distributionUrl': Path(os.environ['FREADER_GRADLE_ZIP']).resolve().as_uri(),
-              'distributionSha256Sum': os.environ['FREADER_GRADLE_SHA256'],
-              'networkTimeout': '60000',
-          }
-          lines = [line for line in wrapper.read_text().splitlines()
-                   if line.split('=', 1)[0].strip() not in updates]
-          lines.extend(f'{key}={value}' for key, value in updates.items())
-          wrapper.write_text('\n'.join(lines) + '\n')
-          PY
-
-          # Detect installation problems before starting the much longer Flutter build.
-          (cd android && ./gradlew --version)
-
-      - name: 4c. Save verified Gradle distribution cache
-        if: steps.gradle-dist-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/freader-gradle-distributions
-          key: freader-gradle-bin-v1-${{ runner.os }}-${{ env.FREADER_GRADLE_VERSION }}-${{ env.FREADER_GRADLE_SHA256 }}
-
-      - name: 4c2. Restore verified Kotlin 2.1.0 download cache
-        id: kotlin-compiler-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ runner.temp }}/freader-kotlin-downloads
-          key: freader-kotlin-2.1.0-v1-${{ runner.os }}-c1b139a6f251c3b99e92befa326cb75d93a001d74c3ac601155a8cdb0d253783
-
-      - name: 4d. Prepare verified Kotlin compilers 2.0.21 and 2.1.0
-        timeout-minutes: 20
+      - name: 4c. Route Maven downloads through Google's Maven Central mirror
         shell: bash
         run: |
           set -euo pipefail
-          export FREADER_KOTLIN_REPOSITORY="$RUNNER_TEMP/freader-kotlin-repository"
+          GRADLE_HOME_DIR="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          mkdir -p "$GRADLE_HOME_DIR/init.d"
 
-          # Gradle 8.12 already bundles the EXACT Maven compiler jar that failed with 504.
-          # Reuse it; do not download it again from Central/Plugin Portal/GitHub.
-          python3 - <<'PY'
-          import hashlib
-          import os
-          import shutil
-          import subprocess
-          import zipfile
-          from pathlib import Path
+          # 네트워크 일시 장애 대비: Gradle 자체 다운로드 재시도/타임아웃 상향
+          cat >> "$GRADLE_HOME_DIR/gradle.properties" <<'PROPS'
+          systemProp.org.gradle.internal.http.connectionTimeout=60000
+          systemProp.org.gradle.internal.http.socketTimeout=180000
+          systemProp.org.gradle.internal.repository.max.retries=8
+          systemProp.org.gradle.internal.repository.initial.backoff=2000
+          PROPS
 
-          version = os.environ['FREADER_GRADLE_VERSION']
-          archive = Path(os.environ['RUNNER_TEMP']) / 'freader-gradle-distributions' / f'gradle-{version}-bin.zip'
-          with archive.open('rb') as stream:
-              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-          if digest != os.environ['FREADER_GRADLE_SHA256']:
-              raise SystemExit('Gradle distribution checksum mismatch; refusing to extract Kotlin.')
-
-          artifact = 'kotlin-compiler-embeddable-2.0.21'
-          with zipfile.ZipFile(archive) as dist:
-              compiler = dist.read(f'gradle-{version}/lib/{artifact}.jar')
-          expected = '9fa8cdd1de0dccffe154c997d423ec6b5f53cd6d9177e3a77a9b0de03fb1bc81'
-          if hashlib.sha256(compiler).hexdigest() != expected:
-              raise SystemExit('Bundled Kotlin compiler checksum mismatch.')
-
-          target = Path(os.environ['FREADER_KOTLIN_REPOSITORY']) / 'org/jetbrains/kotlin/kotlin-compiler-embeddable/2.0.21'
-          target.mkdir(parents=True, exist_ok=True)
-          (target / f'{artifact}.jar').write_bytes(compiler)
-          # Published Maven POM, including ALL original runtime dependencies/exclusions.
-          # Keeping it here avoids a network request even for this artifact's metadata.
-          (target / f'{artifact}.pom').write_text("""<?xml version="1.0" encoding="UTF-8"?>
-          <project xmlns="http://maven.apache.org/POM/4.0.0" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <modelVersion>4.0.0</modelVersion>
-            <groupId>org.jetbrains.kotlin</groupId>
-            <artifactId>kotlin-compiler-embeddable</artifactId>
-            <version>2.0.21</version>
-            <name>Kotlin Compiler Embeddable</name>
-            <description>Kotlin Compiler (embeddable)</description>
-            <url>https://kotlinlang.org/</url>
-            <licenses>
-              <license>
-                <name>The Apache License, Version 2.0</name>
-                <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
-              </license>
-            </licenses>
-            <developers>
-              <developer>
-                <name>Kotlin Team</name>
-                <organization>JetBrains</organization>
-                <organizationUrl>https://www.jetbrains.com</organizationUrl>
-              </developer>
-            </developers>
-            <scm>
-              <connection>scm:git:https://github.com/JetBrains/kotlin.git</connection>
-              <developerConnection>scm:git:https://github.com/JetBrains/kotlin.git</developerConnection>
-              <url>https://github.com/JetBrains/kotlin</url>
-            </scm>
-            <dependencies>
-              <dependency>
-                <groupId>org.jetbrains.kotlin</groupId>
-                <artifactId>kotlin-stdlib</artifactId>
-                <version>2.0.21</version>
-                <scope>runtime</scope>
-              </dependency>
-              <dependency>
-                <groupId>org.jetbrains.kotlin</groupId>
-                <artifactId>kotlin-script-runtime</artifactId>
-                <version>2.0.21</version>
-                <scope>runtime</scope>
-              </dependency>
-              <dependency>
-                <groupId>org.jetbrains.kotlin</groupId>
-                <artifactId>kotlin-reflect</artifactId>
-                <version>1.6.10</version>
-                <scope>runtime</scope>
-                <exclusions>
-                  <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                  </exclusion>
-                </exclusions>
-              </dependency>
-              <dependency>
-                <groupId>org.jetbrains.kotlin</groupId>
-                <artifactId>kotlin-daemon-embeddable</artifactId>
-                <version>2.0.21</version>
-                <scope>runtime</scope>
-              </dependency>
-              <dependency>
-                <groupId>org.jetbrains.intellij.deps</groupId>
-                <artifactId>trove4j</artifactId>
-                <version>1.0.20200330</version>
-                <scope>runtime</scope>
-              </dependency>
-              <dependency>
-                <groupId>org.jetbrains.kotlinx</groupId>
-                <artifactId>kotlinx-coroutines-core-jvm</artifactId>
-                <version>1.6.4</version>
-                <scope>runtime</scope>
-                <exclusions>
-                  <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                  </exclusion>
-                </exclusions>
-              </dependency>
-            </dependencies>
-          </project>
-          """, encoding='utf-8')
-          print(f'Prepared verified local Kotlin compiler 2.0.21 ({len(compiler)} bytes).')
-
-          # file_picker uses Kotlin 2.1.0 as well. Do NOT substitute 2.0.21: the
-          # compiler must match its Build Tools API. Prepare the exact published bytes.
-          # JAR SHA-256 independently matches JetBrains/kotlin gradle/verification-metadata.xml.
-          # POM is the unmodified Maven Central POM, including all runtime dependencies.
-          compiler_version = '2.1.0'
-          artifact_path = f'org/jetbrains/kotlin/kotlin-compiler-embeddable/{compiler_version}'
-          cache_dir = Path(os.environ['RUNNER_TEMP']) / 'freader-kotlin-downloads'
-          cache_dir.mkdir(parents=True, exist_ok=True)
-          repository_dir = Path(os.environ['FREADER_KOTLIN_REPOSITORY']) / artifact_path
-          repository_dir.mkdir(parents=True, exist_ok=True)
-          expected_files = {
-              'jar': 'c1b139a6f251c3b99e92befa326cb75d93a001d74c3ac601155a8cdb0d253783',
-              'pom': '0044fa45046fba7ca808d98f9895f25b16510edb53c1e282107db006d126d67f',
-          }
-          mirrors = [
-              'https://maven-central.storage-download.googleapis.com/maven2',
-              'https://repo.maven.apache.org/maven2',
-              'https://repo1.maven.org/maven2',
-          ]
-
-          def valid_file(path, expected_hash):
-              if not path.is_file():
-                  return False
-              with path.open('rb') as stream:
-                  return hashlib.file_digest(stream, 'sha256').hexdigest() == expected_hash
-
-          for extension, expected_hash in expected_files.items():
-              name = f'kotlin-compiler-embeddable-{compiler_version}.{extension}'
-              cached_file = cache_dir / name
-              if not valid_file(cached_file, expected_hash):
-                  partial = cached_file.with_suffix(cached_file.suffix + '.part')
-                  for mirror in mirrors:
-                      partial.unlink(missing_ok=True)
-                      print(f'Downloading {name} from {mirror}', flush=True)
-                      result = subprocess.run([
-                          'curl', '--fail', '--location', '--show-error', '--silent',
-                          '--retry', '2', '--retry-delay', '5', '--retry-all-errors',
-                          '--retry-max-time', '180', '--connect-timeout', '20', '--max-time', '180',
-                          f'{mirror}/{artifact_path}/{name}', '--output', str(partial),
-                      ])
-                      if result.returncode == 0 and valid_file(partial, expected_hash):
-                          partial.replace(cached_file)
-                          break
-                      print(f'::warning::{name} download or checksum failed; trying next endpoint.')
-                  partial.unlink(missing_ok=True)
-              if not valid_file(cached_file, expected_hash):
-                  raise SystemExit(f'Cannot prepare verified {name}; refusing to start an incomplete build.')
-              shutil.copyfile(cached_file, repository_dir / name)
-              print(f'Prepared verified local {name} ({cached_file.stat().st_size} bytes).')
-          PY
-
-          printf 'FREADER_KOTLIN_REPOSITORY=%s\n' "$FREADER_KOTLIN_REPOSITORY" >> "$GITHUB_ENV"
-          GRADLE_INIT_DIR="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
-          mkdir -p "$GRADLE_INIT_DIR"
-          cat > "$GRADLE_INIT_DIR/freader-repositories.gradle" <<'GRADLE'
+          rm -f "$GRADLE_HOME_DIR/init.d/freader-repositories.gradle"
+          cat > "$GRADLE_HOME_DIR/init.d/freader-repositories.gradle" <<'GRADLE'
+          import org.gradle.api.artifacts.dsl.RepositoryHandler
           import org.gradle.api.artifacts.repositories.MavenArtifactRepository
           import org.gradle.api.initialization.resolve.RepositoriesMode
 
-          def localPath = System.getenv('FREADER_KOTLIN_REPOSITORY')
-          def compilerVersions = ['2.0.21', '2.1.0']
-          compilerVersions.each { version ->
-              ['jar', 'pom'].each { extension ->
-                  def relative = "org/jetbrains/kotlin/kotlin-compiler-embeddable/${version}/kotlin-compiler-embeddable-${version}.${extension}"
-                  if (!localPath || !new File(localPath, relative).isFile()) {
-                      throw new GradleException('The verified FReader Kotlin repository is missing ' + relative + '. Run workflow step 4d first.')
+          // 원인: GitHub 러너에서 Maven Central(repo.maven.apache.org)/Plugin Portal이
+          // 큰 Kotlin jar(kotlin-compiler-embeddable 등)를 github.com/JetBrains/kotlin/releases 로
+          // 리다이렉트하고, 그 GitHub 다운로드가 504로 터짐.
+          // 해결: Google이 운영하는 Maven Central 전체 미러(GCS)를 "맨 앞" 저장소로 둔다.
+          // 이 미러는 파일을 직접 내려주므로 GitHub 리다이렉트를 타지 않는다.
+          // (Gradle은 404면 다음 저장소로 넘어가므로 google() 전용 아티팩트는 기존대로 받아짐)
+
+          def MIRROR_NAME = 'FReaderCentralMirror'
+          def MIRROR_URL = 'https://maven-central.storage-download.googleapis.com/maven2/'
+          // Maven Central에 없는 그룹은 미러에서 아예 찾지 않음 (불필요한 404 왕복 방지)
+          def NON_CENTRAL = '(androidx|com[.]android|com[.]google[.]android|com[.]google[.]firebase|com[.]google[.]gms|io[.]flutter|dev[.]flutter)([.].*)?'
+
+          def addMirrorFirst = { RepositoryHandler repos ->
+              if (repos.findByName(MIRROR_NAME) != null) return
+              def mirror = repos.maven { MavenArtifactRepository r ->
+                  r.name = MIRROR_NAME
+                  r.url = MIRROR_URL
+                  r.content { excludeGroupByRegex(NON_CENTRAL) }
+              }
+              repos.remove(mirror)
+              repos.addFirst(mirror)
+          }
+
+          // Plugin Portal은 JetBrains jar를 Maven Central → GitHub 으로 넘기므로 JetBrains 그룹은 금지
+          def blockPortalRedirects = { RepositoryHandler repos ->
+              repos.withType(MavenArtifactRepository).configureEach { MavenArtifactRepository r ->
+                  if (r.url?.host in ['plugins.gradle.org', 'plugins-artifacts.gradle.org']) {
+                      r.content { excludeGroupByRegex('org[.]jetbrains([.].*)?') }
                   }
               }
           }
 
-          def configureBundledCompiler = { repositories ->
-              repositories.maven {
-                  name = 'FReaderBundledKotlin'
-                  url = new File(localPath).toURI()
-                  content {
-                      compilerVersions.each { version ->
-                          includeVersion('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', version)
-                      }
-                  }
-                  metadataSources { mavenPom() }
-              }
-              repositories.withType(MavenArtifactRepository).configureEach { repository ->
-                  if (repository.name != 'FReaderBundledKotlin') {
-                      // Exclude BOTH exact versions from remote repositories, including ones
-                      // added later by subprojects such as file_picker. Ordering alone is not enough.
-                      repository.content {
-                          compilerVersions.each { version ->
-                              excludeVersion('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', version)
-                          }
-                      }
-                  }
-              }
+          // 플러그인/빌드스크립트 저장소 (Flutter의 included build ':gradle' 포함 — 이번 에러 지점)
+          def configurePluginRepositories = { RepositoryHandler repos ->
+              addMirrorFirst(repos)
+              repos.google()
+              repos.mavenCentral()
+              repos.gradlePluginPortal()
+              blockPortalRedirects(repos)
           }
 
-          def configurePluginRepositories = { repositories ->
-              configureBundledCompiler(repositories)
-              repositories.mavenCentral()
-              repositories.google()
-              repositories.gradlePluginPortal()
-              repositories.withType(MavenArtifactRepository).configureEach { repository ->
-                  if (repository.url.host in ['plugins.gradle.org', 'plugins-artifacts.gradle.org']) {
-                      repository.content { excludeGroupByRegex('org[.]jetbrains([.].*)?') }
-                  }
-              }
-          }
+          def repoMode = RepositoriesMode.PREFER_PROJECT
 
-          // init.d applies to Flutter's INCLUDED Gradle build too. Editing only the app's
-          // settings.gradle.kts leaves the failing Flutter plugin classpath untouched.
           gradle.beforeSettings { settings ->
               configurePluginRepositories(settings.pluginManagement.repositories)
-              configureBundledCompiler(settings.dependencyResolutionManagement.repositories)
           }
 
-          def projectRepositoriesAllowed = true
           gradle.settingsEvaluated { settings ->
-              projectRepositoriesAllowed = settings.dependencyResolutionManagement.repositoriesMode.get() == RepositoriesMode.PREFER_PROJECT
+              def drm = settings.dependencyResolutionManagement
+              repoMode = drm.repositoriesMode.getOrElse(RepositoriesMode.PREFER_PROJECT)
+              if (!drm.repositories.isEmpty()) {
+                  addMirrorFirst(drm.repositories)
+                  blockPortalRedirects(drm.repositories)
+              }
           }
+
           gradle.beforeProject { project ->
               configurePluginRepositories(project.buildscript.repositories)
-              // Flutter uses FAIL_ON_PROJECT_REPOS; its settings repository above handles
-              // compiler configurations. Normal Android projects use project repositories.
-              if (projectRepositoriesAllowed) {
-                  configureBundledCompiler(project.repositories)
-              }
-          }
-          GRADLE
 
-      - name: 4d2. Save verified Kotlin 2.1.0 download cache
-        if: steps.kotlin-compiler-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/freader-kotlin-downloads
-          key: freader-kotlin-2.1.0-v1-${{ runner.os }}-c1b139a6f251c3b99e92befa326cb75d93a001d74c3ac601155a8cdb0d253783
-
-      - name: 4e. Verify both Kotlin compilers and plugin subprojects offline
-        timeout-minutes: 8
-        shell: bash
-        run: |
-          set -euo pipefail
-          CHECK_DIR="$RUNNER_TEMP/freader-kotlin-check"
-          mkdir -p "$CHECK_DIR/included" "$CHECK_DIR/file_picker"
-          cat > "$CHECK_DIR/settings.gradle" <<'GRADLE'
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories { mavenCentral() }
-          }
-          rootProject.name = 'freader-kotlin-check'
-          include(':file_picker')
-          includeBuild('included') { name = 'freader-kotlin-included' }
-          GRADLE
-          cat > "$CHECK_DIR/included/settings.gradle" <<'GRADLE'
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories { mavenCentral() }
-          }
-          rootProject.name = 'freader-kotlin-included'
-          GRADLE
-          cat > "$CHECK_DIR/included/build.gradle" <<'GRADLE'
-          buildscript {
-              dependencies {
-                  classpath('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21') { transitive = false }
-              }
-          }
-          configurations {
-              bundledCompiler2021
-              kotlinBuildToolsApiClasspath
-              kotlinCompilerClasspath
-          }
-          dependencies {
-              bundledCompiler2021('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21') { transitive = false }
-              kotlinBuildToolsApiClasspath('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.0') { transitive = false }
-              kotlinCompilerClasspath('org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.0') { transitive = false }
-          }
-          // Only the previously failing compiler artifacts are isolated in this preflight.
-          // The real build still uses both original POMs and all their transitive dependencies.
-          tasks.register('verifyBundledKotlin') {
-              doLast {
-                  def checksums = [
-                      '2.0.21': '9fa8cdd1de0dccffe154c997d423ec6b5f53cd6d9177e3a77a9b0de03fb1bc81',
-                      '2.1.0': 'c1b139a6f251c3b99e92befa326cb75d93a001d74c3ac601155a8cdb0d253783'
-                  ]
-                  def checks = [
-                      [buildscript.configurations.classpath, '2.0.21'],
-                      [configurations.bundledCompiler2021, '2.0.21'],
-                      [configurations.kotlinBuildToolsApiClasspath, '2.1.0'],
-                      [configurations.kotlinCompilerClasspath, '2.1.0']
-                  ]
-                  checks.each { entry ->
-                      def configuration = entry[0]
-                      def version = entry[1]
-                      def expected = new File(System.getenv('FREADER_KOTLIN_REPOSITORY'),
-                          "org/jetbrains/kotlin/kotlin-compiler-embeddable/${version}/kotlin-compiler-embeddable-${version}.jar").canonicalFile
-                      def resolved = configuration.singleFile.canonicalFile
-                      if (resolved != expected) throw new GradleException('Kotlin did not resolve locally: ' + resolved)
-                      def digest = java.security.MessageDigest.getInstance('SHA-256').digest(resolved.bytes).encodeHex().toString()
-                      if (digest != checksums[version]) throw new GradleException('Kotlin checksum mismatch: ' + version)
-                      println('FREADER_LOCAL_KOTLIN_OK: ' + project.path + ' / ' + configuration.name + ' / ' + version)
+              // 앱 코틀린 컴파일용 kotlin-compiler-embeddable 등은 프로젝트 저장소로 받는다.
+              // 빌드 스크립트가 저장소를 선언한 뒤(afterEvaluate)에, 이미 저장소가 있을 때만 맨 앞에 미러를 끼운다.
+              project.afterEvaluate {
+                  if (repoMode == RepositoriesMode.PREFER_PROJECT && !project.repositories.isEmpty()) {
+                      addMirrorFirst(project.repositories)
+                      blockPortalRedirects(project.repositories)
                   }
               }
           }
           GRADLE
-          cp "$CHECK_DIR/included/build.gradle" "$CHECK_DIR/build.gradle"
-          cp "$CHECK_DIR/included/build.gradle" "$CHECK_DIR/file_picker/build.gradle"
-          cat >> "$CHECK_DIR/build.gradle" <<'GRADLE'
-          tasks.named('verifyBundledKotlin') {
-              dependsOn ':file_picker:verifyBundledKotlin'
-              dependsOn gradle.includedBuild('freader-kotlin-included').task(':verifyBundledKotlin')
-          }
-          GRADLE
-          # Check settings-only repositories (Flutter's included build) and project
-          # repositories (Android/plugin subprojects), with the network disabled.
-          for MODE in FAIL_ON_PROJECT_REPOS PREFER_PROJECT; do
-            sed -i -E "s/RepositoriesMode\.(FAIL_ON_PROJECT_REPOS|PREFER_PROJECT)/RepositoriesMode.$MODE/g" \
-              "$CHECK_DIR/settings.gradle" "$CHECK_DIR/included/settings.gradle"
-            "$GITHUB_WORKSPACE/android/gradlew" -p "$CHECK_DIR" --offline --no-daemon --console=plain verifyBundledKotlin
-          done
 
-      - name: 4f. Verify offline HWP engine and fonts
-        shell: bash
+      - name: 4d. Verify bundled Excel assets
         run: |
-          python3 - <<'PYVERIFY'
-          import hashlib
-          import json
+          python3 - <<'PY'
           from pathlib import Path
-
-          root = Path('assets/hwp')
-          provenance = json.loads((root / 'PROVENANCE.json').read_text())
-          assert provenance.get('version') == '0.8.7', f"Wrong HWP engine version in assets/hwp/PROVENANCE.json: expected 0.8.7, found {provenance.get('version')!r}. Upload assets/hwp/ from the same release ZIP."
-          for name, expected in provenance['artifacts'].items():
-              content = (root / name).read_bytes()
-              assert len(content) == expected['bytes'], f'Wrong HWP asset size: {name}'
-              assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong HWP asset checksum: {name}'
-          for name in ['index.html', 'reader.js', 'reader.css', 'fonts/NotoSansKR-Regular.woff2',
-                       'fonts/NotoSansKR-Bold.woff2', 'fonts/NotoSerifKR-Regular.woff2',
-                       'fonts/NotoSerifKR-Bold.woff2', 'fonts/LatinModernMath-Regular.woff2',
-                       'fonts/NotoSansKR-OFL.txt', 'fonts/NotoSerifKR-OFL.txt', 'fonts/GUST-FONT-LICENSE.txt']:
-              assert (root / name).is_file(), f'Missing offline HWP asset: {name}'
-          print('Verified pinned rhwp 0.8.7, local fonts and license notices.')
-          PYVERIFY
-
-      - name: 4g. Verify offline DOCX engine
-        shell: bash
-        run: |
-          python3 - <<'PYVERIFY'
-          import hashlib
-          import json
-          from pathlib import Path
-
-          root = Path('assets/docx/engine')
-          provenance = json.loads((root / 'PROVENANCE.json').read_text())
-          assert provenance.get('version') == '7.7.0', f"Wrong DOCX engine version in assets/docx/engine/PROVENANCE.json: expected 7.7.0, found {provenance.get('version')!r}. Upload assets/docx/engine/ from the same release ZIP."
-          for name, expected in provenance['artifacts'].items():
-              content = (root / name).read_bytes()
-              assert len(content) == expected['bytes'], f'Wrong DOCX asset size: {name}'
-              assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong DOCX asset checksum: {name}'
-          for name in ['index.html', 'reader.js', 'reader.css', 'docx_layout.js', 'docx_charts.js', 'worker.js', 'rtf_images.js', 'rtf_layout.js', 'THIRD_PARTY_NOTICES.txt']:
-              assert (root.parent / name).is_file(), f'Missing DOCX asset: {name}'
-          root = Path('assets/docx/metafile')
-          provenance = json.loads((root / 'PROVENANCE.json').read_text())
-          assert provenance.get('version') == '4.3.5', f"Wrong metafile engine version in assets/docx/metafile/PROVENANCE.json: expected 4.3.5, found {provenance.get('version')!r}. Upload assets/docx/metafile/ from the same release ZIP."
-          for name, expected in provenance['artifacts'].items():
-              content = (root / name).read_bytes()
-              assert len(content) == expected['bytes'], f'Wrong metafile asset size: {name}'
-              assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong metafile checksum: {name}'
-          root = Path('assets/docx/fonts')
-          provenance = json.loads((root / 'PROVENANCE.json').read_text())
-          for name, expected in provenance['artifacts'].items():
-              content = (root / name).read_bytes()
-              assert len(content) == expected['bytes'], f'Wrong punctuation font size: {name}'
-              assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong punctuation font checksum: {name}'
-          for name in provenance['licenseNotices']:
-              assert (root / name).is_file(), f'Missing font license: {name}'
-          for expected in json.loads((root / 'LATIN_PROVENANCE.json').read_text())['files']:
-              content = (root / expected['file']).read_bytes()
-              assert len(content) == expected['bytes'], f"Wrong Latin font size: assets/docx/fonts/{expected['file']} (expected {expected['bytes']}, found {len(content)})"
-              assert hashlib.sha256(content).hexdigest() == expected['sha256'], f"Wrong Latin font checksum: assets/docx/fonts/{expected['file']}. Upload the original font file from the release ZIP."
-          print('Verified pinned OpenDocument.core 7.7.0, metafile converter, RTF reader and offline fonts.')
-          PYVERIFY
-
-      - name: 4h. Verify TXT open-source notices
-        shell: bash
-        run: |
-          python3 - <<'PYVERIFY'
-          import hashlib
-          import json
-          from pathlib import Path
-          root = Path('assets/txt')
-          metadata = json.loads((root / 'PROVENANCE.json').read_text())
-          for name, expected in metadata['files'].items():
-              content = (root / name).read_bytes()
-              assert len(content) == expected['bytes'], f'Wrong TXT notice size: {name}'
-              assert hashlib.sha256(content).hexdigest() == expected['sha256'], f'Wrong TXT notice checksum: {name}'
-          for source in ('lib/services/txt_reader_service.dart', 'lib/services/txt_page_document.dart', 'lib/widgets/txt_paged_viewer.dart', 'lib/services/epub_validation.dart'):
-              assert Path(source).is_file(), f'Missing required source: {source}'
-          vendor = Path('vendor/flutter_epub_viewer')
-          pinned = json.loads((vendor / 'FREADER_PROVENANCE.json').read_text())
-          for name, expected in pinned['files'].items():
-              assert hashlib.sha256((vendor / name).read_bytes()).hexdigest() == expected['vendored_sha256'], f'Wrong local EPUB reader checksum: {name}'
-          print('Verified offline TXT service, local EPUB reader and open-source notices.')
-          PYVERIFY
-
-      - name: 4i. Verify offline PPT and PPTX engines
-        shell: bash
-        run: |
-          python3 - <<'PYVERIFY'
-          import hashlib
-          import json
-          from pathlib import Path
-          root = Path('assets/ppt')
-          provenance = json.loads((root / 'PROVENANCE.json').read_text())
-          for folder in ('engine', 'legacy'):
-              metadata = provenance[folder]
-              if metadata.get('version') != '0.89.8':
-                  raise SystemExit(f'Wrong PPT engine version: {folder}. Upload assets from the same release ZIP.')
-              for name, expected in metadata['artifacts'].items():
-                  asset = root / folder / name
-                  if not asset.is_file():
-                      raise SystemExit(f'Missing PPT engine asset: {asset}. Upload the complete assets folder.')
-                  data = asset.read_bytes()
-                  if len(data) != expected['bytes'] or hashlib.sha256(data).hexdigest() != expected['sha256']:
-                      raise SystemExit(f'Wrong PPT engine asset: {asset}. Replace it from the release ZIP.')
-              for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
-                  if not (root / folder / name).is_file():
-                      raise SystemExit(f'Missing PPT license notice: {folder}/{name}')
-          if provenance.get('integrationRevision') != 54:
-              raise SystemExit('Wrong PPT viewer integration. Upload the complete assets/ppt folder from v54.')
-          for name, expected in provenance['integrationArtifacts'].items():
-              asset = root / name
-              if not asset.is_file() or hashlib.sha256(asset.read_bytes()).hexdigest() != expected['sha256']:
-                  raise SystemExit(f'Missing or outdated PPT viewer file: {asset}. Upload assets from the same ZIP.')
-          for name in ('index.html', 'reader.js', 'reader.css', 'animation_steps.js', 'THIRD_PARTY_NOTICES.txt'):
-              if not (root / name).is_file():
-                  raise SystemExit(f'Missing PPT viewer asset: {name}')
-          print('Verified offline PPT/PPTX 0.89.8 engines, v54 animation steps and license notices.')
-          PYVERIFY
-
-      - name: 4j. Verify offline Excel engines
-        shell: bash
-        run: |
-          python3 - <<'PYVERIFY'
-          import hashlib
-          import json
-          from pathlib import Path
+          import hashlib, json
           root = Path('assets/xlsx')
-          provenance = json.loads((root / 'PROVENANCE.json').read_text())
-          for folder in ('engine', 'legacy'):
-              metadata = provenance[folder]
-              if metadata.get('version') != '0.89.8':
-                  raise SystemExit(f'Wrong Excel engine version: {folder}. Upload assets from the same release ZIP.')
-              for name, expected in metadata['artifacts'].items():
-                  asset = root / folder / name
-                  if not asset.is_file():
-                      raise SystemExit(f'Missing Excel asset: {asset}. Upload the complete assets folder.')
-                  data = asset.read_bytes()
+          manifest = json.loads((root / 'PROVENANCE.json').read_text())
+          if manifest.get('integrationRevision') != 87:
+              raise SystemExit('Excel assets are not v87. Upload the complete assets/xlsx folder.')
+          groups = [(root, manifest['integrationArtifacts'])]
+          groups += [(root / group, manifest[group]['artifacts']) for group in ('engine', 'legacy')]
+          for folder, files in groups:
+              for name, expected in files.items():
+                  file = folder / name
+                  if not file.is_file():
+                      raise SystemExit(f'Missing Excel asset: {file}')
+                  data = file.read_bytes()
                   if len(data) != expected['bytes'] or hashlib.sha256(data).hexdigest() != expected['sha256']:
-                      raise SystemExit(f'Wrong Excel asset: {asset}. Replace it from the release ZIP.')
-              for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
-                  if not (root / folder / name).is_file():
-                      raise SystemExit(f'Missing Excel license notice: {folder}/{name}')
-          if provenance.get('integrationRevision') != 56:
-              raise SystemExit('Wrong Excel viewer integration. Upload the complete assets/xlsx folder from v56.')
-          for name, expected in provenance['integrationArtifacts'].items():
-              asset = root / name
-              if not asset.is_file() or hashlib.sha256(asset.read_bytes()).hexdigest() != expected['sha256']:
-                  raise SystemExit(f'Missing or outdated Excel viewer file: {asset}. Upload assets from the same ZIP.')
-          for name in ('index.html', 'reader.js', 'reader.css', 'merge_ranges.js', 'THIRD_PARTY_NOTICES.txt'):
-              if not (root / name).is_file():
-                  raise SystemExit(f'Missing Excel viewer asset: {name}')
-          print('Verified offline Excel engines and v56 range-based merged-cell rendering.')
-          PYVERIFY
+                      raise SystemExit(f'Excel asset is incomplete or outdated: {file}')
+          pubspec = Path('pubspec.yaml').read_text()
+          for folder in ('assets/xlsx/', 'assets/xlsx/engine/', 'assets/xlsx/legacy/'):
+              if f'- {folder}' not in pubspec:
+                  raise SystemExit(f'Missing Flutter asset declaration: {folder}')
+          print('Excel assets verified')
+          PY
 
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
+        shell: bash
         run: |
-          set -euo pipefail
-          BUILD_NUM=$((137 + ${{ github.run_number }}))
-          flutter pub get
-          # Regression helpers are optional repository files, not app assets.
-          # Run them when uploaded; a failed test still stops the build.
-          for CHECK in tool/verify_txt_reader.dart tool/verify_docx_layout.dart; do
-            if [ -f "$CHECK" ]; then
-              dart run "$CHECK"
-            else
-              echo "::notice::Optional check not uploaded: $CHECK. Continuing APK/AAB build."
-            fi
-          done
-          if [ -f test/epub_transport_test.dart ] && [ -f test/epub_transport_checks.dart ]; then
-            flutter test test/epub_transport_test.dart
-          else
-            echo "::notice::Optional EPUB transport tests not uploaded completely. Continuing APK/AAB build."
-          fi
-          flutter build apk --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM
-          flutter build appbundle --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM
+          set -uo pipefail
+          BUILD_NUM=$((121 + ${{ github.run_number }}))
+
+          retry() {
+            local n=1 max=3
+            until "$@"; do
+              if [ $n -ge $max ]; then
+                echo "::error::'$*' failed after $max attempts"
+                return 1
+              fi
+              echo "::warning::Attempt $n failed (network?). Retrying in $((n * 30))s..."
+              sleep $((n * 30))
+              n=$((n + 1))
+            done
+          }
+
+          retry flutter pub get || exit 1
+          retry flutter build apk --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM || exit 1
+          retry flutter build appbundle --release --no-pub --no-tree-shake-icons --build-number=$BUILD_NUM || exit 1
 
       - name: 6. Upload Release APK Artifact
         uses: actions/upload-artifact@v4
