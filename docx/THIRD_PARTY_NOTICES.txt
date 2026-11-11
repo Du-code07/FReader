@@ -1,0 +1,39 @@
+FReader DOCX reader
+
+OpenDocument.core 7.7.0 is bundled from the official @opendocument/odr-core
+npm package. The WASM engine is unmodified. The JavaScript module was renamed
+from .mjs to .js for Android MIME compatibility; the wrapper import was adjusted.
+The original wrapper is included as engine/index.upstream.js. Its HTML output is adapted for FReader's
+existing read-only UI. No document is uploaded, edited or saved by this viewer.
+
+License: Mozilla Public License 2.0, included in engine/LICENSE.
+Source: https://github.com/opendocument-app/OpenDocument.core
+Corresponding source commit: fae77ff7232cc79eecaebeb9e6839acf568d09c2
+Source archive (including build instructions and dependency declarations):
+https://github.com/opendocument-app/OpenDocument.core/archive/fae77ff7232cc79eecaebeb9e6839acf568d09c2.tar.gz
+Original package integrity and asset hashes: engine/PROVENANCE.json.
+
+The host reuses the Noto Sans KR, Noto Serif KR and Latin Modern Math fonts
+already bundled under assets/hwp/fonts. Their licenses and notices are included
+there and in assets/hwp/THIRD_PARTY_NOTICES.txt. Missing document fonts are
+substituted. FReader paginates the rendered content to the document's page size;
+the resulting pagination and complex Word features can differ from Microsoft Word.
+
+Additional Noto Sans KR and Noto Serif KR CJK punctuation subsets are bundled
+under fonts/. They use the same SIL Open Font License notices above. Original
+Google Fonts download URLs, sizes and checksums are recorded in fonts/PROVENANCE.json.
+The local RTF layout adapter reads paragraph/run styles, page geometry and page
+furniture separately; it does not modify OpenDocument.core or the input file.
+
+emf-converter 4.3.5 (Apache-2.0): offline EMF/WMF image conversion.
+Source: https://github.com/ChristopherVR/emf-converter
+License and provenance: metafile/LICENSE and metafile/PROVENANCE.json.
+
+The local DOCX adapter supplements the engine with OOXML theme fonts, character
+spacing, paragraph indents, table margins/shading, section geometry and saved
+page-break hints. Literal-dot TOC leaders remain in the DOM and adapt to the
+available line width. Cached page breaks are hints, not a Microsoft Word layout
+engine; substituted fonts and complex floating objects can still change pages.
+Additional unmodified Noto Sans / Noto Serif Latin TrueType fonts are bundled
+under fonts/ (SIL Open Font License 1.1). Licenses and original download URLs,
+file sizes and SHA-256 checksums: fonts/*-OFL.txt and LATIN_PROVENANCE.json.

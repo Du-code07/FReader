@@ -1,0 +1,31 @@
+{
+  "source": "https://fonts.googleapis.com/css2",
+  "purpose": "CJK punctuation omitted from the existing Korean subsets",
+  "unicodeRange": "U+3000-303F",
+  "licenseNotices": [
+    "../../hwp/fonts/NotoSansKR-OFL.txt",
+    "../../hwp/fonts/NotoSerifKR-OFL.txt"
+  ],
+  "artifacts": {
+    "NotoSansKR-Symbols-Regular.ttf": {
+      "source": "https://fonts.gstatic.com/l/font?kit=PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzuoyeLTyNHfD5WAb4NWrN8x0RD4fqBmYHZVbco2BwPkEVae3k6yq__r9KegB4mYBKI5xqg4_80kt_7N8922onreer2xVzp6lP28vOcifhZupxytQhrVK4ATSTSvP1WK-BtIKVl5aTKwno0WCT0Cg7PeJay6MKaX0vD4uvp9WSd7-iqf2IQq6TJIm5KoqZVwfW9UzoPXmeSwtI17WywiDP6ZTB8wehv-pqdro1XLFEffGsByD37i653qIppwELkQzKfEONTlMLfs&skey=87e7ee645936e2c7&v=v40",
+      "bytes": 11440,
+      "sha256": "3826bd2ff161538d6521051da6c345665ff1d9a0f95a93d849670d5185ba11e5"
+    },
+    "NotoSansKR-Symbols-Bold.ttf": {
+      "source": "https://fonts.gstatic.com/l/font?kit=PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzg01eLTyNHfD5WAb4NWrN8x0RD4fqBmYHZVbco2BwPkEVae3k6yq__r9KegB4mYBKI5xqg4_80kt_7N8922onreer2xVzp6lP28vOcifhZupxytQhrVK4ATSTSvP1WK-BtIKVl5aTKwno0WCT0Cg7PeJay6MKaX0vD4uvp9WSd7-iqf2IQq6TJIm5KoqZVwfW9UzoPXmeSwtI17WywiDP6ZTB8wehv-pqdro1XLFEffGsByD37i653qIppwELkQzKfEONTlMLfs&skey=87e7ee645936e2c7&v=v40",
+      "bytes": 11764,
+      "sha256": "be432bc1e7210e3a30e62651362996462044c794a6f01168ddcfe54f628f0093"
+    },
+    "NotoSerifKR-Symbols-Regular.ttf": {
+      "source": "https://fonts.gstatic.com/l/font?kit=3JnoSDn90Gmq2mr3blnHaTZXbOtLJDvui3JOncjmeM52-V_ammzvFocBzrYukjNCzuOFZMZ7KvI4_uwlDHxynWvbqrUYlJ6blC84xFJLS603KNwlVulg3ap8jFLwpcHdryOS5yANJgUiTwXB7Dql21D9oXqQWJvgqWc8fYQvN3t0rA8bsApFWX7sXE_AcWfbAlD0elv5z4w6299IDy2dUVIjIk8HR4UIvf7lGxf3XE_ppqh_CFvxuVUQ0pNfMeTV_MJ7P678M6dSYZQwkYBDPMtp9Ho-QRd6FsQ8pdCPgYlYSMRh&skey=de7c49c7501994cc&v=v32",
+      "bytes": 13396,
+      "sha256": "c0c478206ca688808aa73478ba1a12548e603f65f295ad77f418a4f763adf5af"
+    },
+    "NotoSerifKR-Symbols-Bold.ttf": {
+      "source": "https://fonts.gstatic.com/l/font?kit=3JnoSDn90Gmq2mr3blnHaTZXbOtLJDvui3JOncgBf852-V_ammzvFocBzrYukjNCzuOFZMZ7KvI4_uwlDHxynWvbqrUYlJ6blC84xFJLS603KNwlVulg3ap8jFLwpcHdryOS5yANJgUiTwXB7Dql21D9oXqQWJvgqWc8fYQvN3t0rA8bsApFWX7sXE_AcWfbAlD0elv5z4w6299IDy2dUVIjIk8HR4UIvf7lGxf3XE_ppqh_CFvxuVUQ0pNfMeTV_MJ7P678M6dSYZQwkYBDPMtp9Ho-QRd6FsQ8pdCPgYlYSMRh&skey=de7c49c7501994cc&v=v32",
+      "bytes": 13380,
+      "sha256": "8f1a06d5ee7c9ee62fd47b928850013e31ebef4f95c8c286e40d5b6f667112a3"
+    }
+  }
+}

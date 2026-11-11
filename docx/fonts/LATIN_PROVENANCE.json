@@ -1,0 +1,41 @@
+{
+  "license": "SIL Open Font License 1.1",
+  "files": [
+    {
+      "file": "NotoSans-Latin-Regular.ttf",
+      "url": "https://fonts.gstatic.com/s/notosans/v42/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyD9A99d.ttf",
+      "sha256": "5be701a9511117e73603bdab95947feef4f18bd1851dbddc30659370b26c69f1",
+      "bytes": 556328
+    },
+    {
+      "file": "NotoSans-Latin-Bold.ttf",
+      "url": "https://fonts.gstatic.com/s/notosans/v42/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyAaBN9d.ttf",
+      "sha256": "9f0ce911354e554bbac00c399dcea71c785962cebfd86e965656f0bd011dfca9",
+      "bytes": 558012
+    },
+    {
+      "file": "NotoSerif-Latin-Regular.ttf",
+      "url": "https://fonts.gstatic.com/s/notoserif/v33/ga6iaw1J5X9T9RW6j9bNVls-hfgvz8JcMofYTa32J4wsL2JAlAhZqFCjwA.ttf",
+      "sha256": "5473d2e43bdd018ee124a4addba8091fd0a29894b121cbb741023af6549662b6",
+      "bytes": 444064
+    },
+    {
+      "file": "NotoSerif-Latin-Bold.ttf",
+      "url": "https://fonts.gstatic.com/s/notoserif/v33/ga6iaw1J5X9T9RW6j9bNVls-hfgvz8JcMofYTa32J4wsL2JAlAhZT1ejwA.ttf",
+      "sha256": "0fb67e6eecf823169409867bdda4fe1b91d6ff1adee5288f233cba0d42dc4734",
+      "bytes": 445548
+    },
+    {
+      "file": "notosans-OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/OFL.txt",
+      "sha256": "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a",
+      "bytes": 4396
+    },
+    {
+      "file": "notoserif-OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/OFL.txt",
+      "sha256": "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a",
+      "bytes": 4396
+    }
+  ]
+}

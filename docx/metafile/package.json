@@ -1,0 +1,74 @@
+{
+	"name": "emf-converter",
+	"version": "4.3.5",
+	"description": "Convert EMF/WMF metafile binaries to PNG data URLs or SVG (markup, data URL, React/JSX)",
+	"keywords": [
+		"canvas",
+		"converter",
+		"emf",
+		"metafile",
+		"png",
+		"react",
+		"svg",
+		"windows-metafile",
+		"wmf"
+	],
+	"homepage": "https://github.com/ChristopherVR/emf-converter",
+	"bugs": {
+		"url": "https://github.com/ChristopherVR/emf-converter/issues"
+	},
+	"license": "Apache-2.0",
+	"author": "ChristopherVR",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ChristopherVR/emf-converter.git"
+	},
+	"files": [
+		"dist/",
+		"LICENSE",
+		"README.md"
+	],
+	"main": "dist/index.js",
+	"module": "dist/index.mjs",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsup",
+		"dev": "tsup --watch",
+		"typecheck": "tsc --noEmit --pretty",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"pack": "bun run build && bun pm pack",
+		"docs:typecheck": "vue-tsc --noEmit -p docs/tsconfig.json",
+		"docs:dev": "vitepress dev docs",
+		"docs:build": "vitepress build docs",
+		"docs:preview": "vitepress preview docs"
+	},
+	"devDependencies": {
+		"@napi-rs/canvas": "^1.0.9",
+		"@types/node": "^26.5.1",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"react": "^19.3.0",
+		"react-dom": "^19.3.0",
+		"tsup": "^8.5.1",
+		"typescript": "^6.0.3",
+		"vitepress": "^1.6.4",
+		"vitest": "^5.0.0",
+		"vue-tsc": "^3.3.11"
+	},
+	"peerDependencies": {
+		"@napi-rs/canvas": "^1.0.9"
+	},
+	"peerDependenciesMeta": {
+		"@napi-rs/canvas": {
+			"optional": true
+		}
+	}
+}

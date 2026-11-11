@@ -1,0 +1,366 @@
+/** Hand-written, because the package ships plain JavaScript — see `wasm/AGENTS.md`. */
+
+/** Ordinals, mirroring the C++ enums. Read them from `Odr.enums`, never inline
+ * a number: the headers guarantee only that values are appended. */
+export interface EnumTables {
+  ErrorCode: Record<string, number>;
+  FileType: Record<string, number>;
+  FileCategory: Record<string, number>;
+  TextEncoding: Record<string, number>;
+  DocumentType: Record<string, number>;
+  HtmlResourceType: Record<string, number>;
+  HtmlColorScheme: Record<string, number>;
+  HtmlTableGridlines: Record<string, number>;
+  HtmlViewportMode: Record<string, number>;
+  HtmlEditingScope: Record<string, number>;
+  PdfTextMode: Record<string, number>;
+  EncryptionState: Record<string, number>;
+  LogLevel: Record<string, number>;
+}
+
+/** What `Document.setTextStyle` states on a run: the seven properties of
+ * `docs/design/document-editing.md`, a toggle as a bool, a colour as
+ * `#rrggbb`, a size as a length with a fixed size (`14pt`). */
+export interface TextStyle {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  /** `null` takes a highlight away. */
+  highlight?: string | null;
+  color?: string;
+  size?: string;
+}
+
+/** What `Document.setParagraphStyle` states on a paragraph. */
+export interface ParagraphStyle {
+  align?: 'left' | 'center' | 'right' | 'justify';
+}
+
+/** What `Document.setCellStyle` states on a cell: the keys of `TextStyle`
+ * but `highlight`, and the cell's own ground and alignment. */
+export interface CellStyle extends Omit<TextStyle, 'highlight'> {
+  /** `null` takes a fill away. */
+  fill?: string | null;
+  /** `null` aligns by the value type. */
+  align?: 'left' | 'center' | 'right' | null;
+}
+
+export interface Capabilities {
+  detectByContent: boolean;
+  open: boolean;
+  decrypt: boolean;
+  translateHtml: boolean;
+  /** The view this type renders as honors `HtmlConfig.colorScheme`. */
+  colorScheme: boolean;
+  edit: boolean;
+  save: boolean;
+  encrypt: boolean;
+  /** `annotate()` is supported. */
+  annotate: boolean;
+  /** `create()` makes a new one. */
+  create: boolean;
+}
+
+export interface FileTypeInfo {
+  fileType: number;
+  name: string;
+  category: number;
+  documentType: number;
+  extensions: string[];
+  mimeTypes: string[];
+  capabilities: Capabilities;
+}
+
+export interface Detection {
+  /** Most specific last: a zip names the container first, its contents after. */
+  fileTypes: number[];
+  mimeType: string;
+}
+
+/** A cell of a sheet, by the sheet's ordinal. */
+export interface SheetPosition {
+  sheet: number;
+  column: number;
+  row: number;
+}
+
+/** What `Document.recalculate` did, each list in reading order. */
+export interface Recalculation {
+  /** The formula cells whose result changed, or that had none before. */
+  changed: SheetPosition[];
+  /** The cells of a cycle, which have no result. */
+  circular: SheetPosition[];
+  /** Stale formula cells the evaluator cannot resolve. */
+  unevaluated: SheetPosition[];
+}
+
+/** What a view leaves out of the sheet it renders. */
+export interface SheetCut {
+  /** The extent the sheet's cells span. */
+  contentRows: number;
+  contentColumns: number;
+  /** The extent the markup carries. */
+  renderedRows: number;
+  renderedColumns: number;
+}
+
+export interface View {
+  name: string;
+  index: number;
+  path: string;
+  /** Set where `spreadsheetLimit` or `spreadsheetCellLimit` cut this view's sheet. */
+  sheetCut?: SheetCut;
+}
+
+/** A resource the markup links to rather than inlining. Fetch with
+ * {@link Document.read}. Empty unless the document carries media, or
+ * `embedImages` was turned off. */
+export interface ExternalResource {
+  path: string;
+  mimeType: string;
+  type: number;
+}
+
+export interface Rendered {
+  html: string;
+  externalResources: ExternalResource[];
+}
+
+export interface Content {
+  bytes: Uint8Array;
+  mimeType: string;
+}
+
+/** The permission bits (`/P`) of an encrypted pdf. */
+export interface PdfPermissions {
+  print: boolean;
+  modifyContents: boolean;
+  copy: boolean;
+  modifyAnnotations: boolean;
+  fillForms: boolean;
+  copyForAccessibility: boolean;
+  assemble: boolean;
+  printHighQuality: boolean;
+}
+
+/** Anything omitted keeps the library's default. */
+export interface HtmlConfig {
+  embedImages?: boolean;
+  /** Load the images a document names outside itself, and keep its relative links. */
+  allowExternalContent?: boolean;
+  editable?: boolean;
+  /** How far an edit in a document view may reach; the page refuses the rest. */
+  editingScope?: number;
+  keyboardNavigation?: boolean;
+  keyboardShortcuts?: boolean;
+  /** Whether a click opens the sheet editor; unset asks the pointer. */
+  sheetEditOnClick?: boolean;
+  /** The function, as a path from `window`, that takes every `odr.on*` callback as a JSON string. */
+  hostMessageHandler?: string;
+  textDocumentMargin?: boolean;
+  formatHtml?: boolean;
+  /** Lay out only the lines, rows, pages and slides near the viewport; on by default. */
+  lazyLayout?: boolean;
+  pageRangeBegin?: number;
+  pageRangeEnd?: number;
+  colorScheme?: number;
+  /** Largest sheet region written, per axis; `null` drops the cap. */
+  spreadsheetLimit?: { rows: number; columns: number } | null;
+  /** Most cells written for one sheet; `null` drops the budget. */
+  spreadsheetCellLimit?: number | null;
+  spreadsheetGridlines?: number;
+  /** Bytes buffered while collecting sheet styles. */
+  spreadsheetStyleBuffer?: number;
+  viewportMode?: number;
+  /** The width the output is shown at, in css pixels; fits paged content to it. */
+  viewportWidth?: number;
+  /** The zoom the view opens at, 1 being actual size; unset follows the fit. */
+  initialZoom?: number;
+  /**
+   * The least distance the generated content keeps from the view's border, per
+   * side, as a css length (e.g. `"3mm"`). A given side raises the inset the
+   * view already has, never lowers it.
+   */
+  minContentMargin?: {
+    top?: string;
+    right?: string;
+    bottom?: string;
+    left?: string;
+  };
+  pdfTextMode?: number;
+  /** Whether an armed annotation tool marks each selection as it is made. */
+  pdfAnnotationMarkOnSelection?: boolean;
+  /** Honor `permissions()`, as pdf.js `enablePermissions` does. */
+  pdfEnforcePermissions?: boolean;
+}
+
+export interface OpenOptions extends HtmlConfig {
+  /** Force an interpretation instead of detecting one. */
+  fileType?: number;
+  /** The upload's name; lets a signature-less format like markdown be
+   * detected. */
+  name?: string;
+}
+
+/** `name` is the C++ exception type: `WrongPassword`, `UnsupportedFileType`, … */
+export declare class OdrError extends Error {
+  /** `odr::ErrorCode`, the number every binding reports — the same space the
+   * rendered page uses for `odr.onError` and `odr.onEditRefused`. Prefer it
+   * over `name` for anything but a log. */
+  code: number;
+  /** Set when `name` is `UnsupportedFileType`. */
+  fileType?: number;
+}
+
+export declare class Document {
+  /** Pass this across `postMessage`, never the `Document` — the wrapper's state
+   * is in private fields and clones away to an empty object. */
+  readonly handle: number;
+  readonly fileType: number;
+  /** The name passed to `open`; empty where none was. */
+  readonly fileName: string;
+
+  meta(): Record<string, unknown>;
+  capabilities(): Capabilities;
+  isPasswordEncrypted(): boolean;
+  /** @throws OdrError `WrongPassword` */
+  decrypt(password: string): this;
+
+  listViews(): View[];
+  /** With the default `embedImages`, `html` is self-contained and can go
+   * straight into a `blob:` iframe. */
+  render(index?: number): Rendered;
+  read(path: string): Content;
+
+  /** `capabilities()` narrowed to this document. */
+  isEditable(): boolean;
+  isSavable(encrypted?: boolean): boolean;
+  /** The language the document states for its content, as a BCP 47 tag such
+   * as `de-DE`; null where it states none. */
+  locale(): string | null;
+  /** Applies what the rendered page's `odr.generateDiff()` collected. A plain
+   * text file takes its `setContent` envelope, and the next render shows it.
+   * @throws OdrError `NoDocumentFile` for a file that is neither */
+  edit(diff: string): this;
+
+  /**
+   * Structural edits, by the id the render wrote into the page as
+   * `data-odr-id`. Each returns the id of what it created; nothing crosses as
+   * a handle. `edit` above is the same operations as one batch.
+   *
+   * @throws OdrError `UnsupportedOperation` where the engine cannot write,
+   *   `invalid_argument` for an id this document does not hold.
+   */
+  removeElement(id: number): this;
+  insertTextBefore(anchorId: number, text: string): number;
+  insertTextAfter(anchorId: number, text: string): number;
+  appendText(parentId: number, text: string): number;
+  /**
+   * States `style` on one run and leaves what it does not name. A property
+   * set is written, never removed; `highlight: null` takes a highlight away.
+   * The same object the page's `odr.editing.format` takes.
+   * @throws OdrError `invalid_argument` for a property it does not know
+   */
+  setTextStyle(id: number, style: TextStyle): this;
+  /**
+   * States `style` on the cell at (`column`, `row`) of the `sheet`-th sheet
+   * and leaves what it does not name.
+   * @throws OdrError `invalid_argument` for a property it does not know
+   */
+  setCellStyle(sheet: number, column: number, row: number, style: CellStyle): this;
+  /** `setCellStyle` on every cell of the row, also past what the file states. */
+  setRowStyle(sheet: number, row: number, style: CellStyle): this;
+  /** `setCellStyle` on every cell of the column, also past what the file states. */
+  setColumnStyle(sheet: number, column: number, style: CellStyle): this;
+  /**
+   * Inserts `count` empty rows at `row`, shifting cells and references.
+   * @throws OdrError `unsupported_operation` if the edit cuts a merge or
+   * pushes a cell off-grid.
+   */
+  insertRows(sheet: number, row: number, count: number): this;
+  /**
+   * Deletes `count` rows at `row`; deleted references become `#REF!`.
+   * @throws OdrError `unsupported_operation` if the edit cuts a merge.
+   */
+  deleteRows(sheet: number, row: number, count: number): this;
+  /**
+   * Inserts `count` empty columns at `column`, shifting cells and references.
+   * @throws OdrError `unsupported_operation` if the edit cuts a merge or
+   * pushes a cell off-grid.
+   */
+  insertColumns(sheet: number, column: number, count: number): this;
+  /**
+   * Deletes `count` columns at `column`; deleted references become `#REF!`.
+   * @throws OdrError `unsupported_operation` if the edit cuts a merge.
+   */
+  deleteColumns(sheet: number, column: number, count: number): this;
+  /**
+   * Recalculates stale formulas and stores their results; save does this after
+   * edits.
+   * @throws OdrError `unsupported_operation` if repeated formulas exceed the
+   * recalculation limit.
+   */
+  recalculate(): Recalculation;
+  /**
+   * States `style` on one paragraph and leaves what it does not name. The
+   * same object the page's `odr.editing.format` takes.
+   * @throws OdrError `invalid_argument` for a property or a value it does
+   * not know
+   */
+  setParagraphStyle(id: number, style: ParagraphStyle): this;
+  /** `afterId` of 0 splits before every child. */
+  splitParagraph(paragraphId: number, afterId?: number): number;
+  mergeParagraphWithNext(paragraphId: number): this;
+  insertParagraphAfter(paragraphId: number): number;
+
+  /**
+   * Whether this pdf can take annotations — false for one declaring an
+   * `/Encrypt`, or whose cross-reference table had to be rebuilt.
+   */
+  isAnnotatable(): boolean;
+
+  /** What `/P` states, or `null` without an `/Encrypt`. */
+  permissions(): PdfPermissions | null;
+
+  /**
+   * Applies markup annotations to a pdf and returns the annotated bytes.
+   *
+   * @param annotations what the rendered page's
+   *   `odr.annotation.getAnnotations()` collected.
+   */
+  annotate(annotations: string): Uint8Array;
+  /** The document's bytes, not the rendered html. A plain text file saves as
+   * UTF-8, whatever its source encoding.
+   * @throws OdrError `UnsupportedOperation` where the format cannot be saved */
+  save(password?: string): Uint8Array;
+
+  /** Idempotent; returns whether it released anything. */
+  close(): boolean;
+  [Symbol.dispose](): void;
+}
+
+export declare class Odr {
+  readonly enums: EnumTables;
+
+  static load(moduleOptions?: Record<string, unknown>): Promise<Odr>;
+
+  version(): string;
+  /** Version, commit and dirty flag. Reads "unknown version" on an unreleased
+   * build, which is correct — `main` carries none. */
+  identify(): string;
+  /** Every known type, enough to populate an `<input accept>` or a PWA
+   * manifest's file handlers without opening anything. */
+  fileTypes(): FileTypeInfo[];
+  detect(bytes: Uint8Array, name?: string): Detection;
+  open(bytes: Uint8Array, options?: OpenOptions): Document;
+  /** A new document of `fileType`, with one empty paragraph or one empty
+   * sheet. Throws `UnsupportedFileType` for a type that cannot be created. */
+  create(fileType: number, config?: HtmlConfig): Document;
+  /** Applies to documents opened after the call. Null silences it again. */
+  setLogger(sink: ((level: number, message: string) => void) | null, level?: number): void;
+  /** Releases every open document; prefer closing them individually. */
+  closeAll(): void;
+}
+
+export default Odr;

@@ -1,0 +1,21 @@
+{
+  "package": "emf-converter",
+  "version": "4.3.5",
+  "source": "https://github.com/ChristopherVR/emf-converter",
+  "npmIntegrity": "sha512-J6HwqfneqPIHVg1yXGrvP8IHSO4rwbtM+5uq6x3cq07SFt2skcmV+D+NDmGJhs6649ZfDgKAVpA1aHXU7yj71Q==",
+  "modifications": "dist/index.mjs renamed to converter.js for Android MIME support. FReader patches: GDI window/viewport extents only apply in MM_ISOTROPIC/MM_ANISOTROPIC (MM_TEXT is 1:1); SVG matrix keeps 6 significant digits for small scale factors.",
+  "artifacts": {
+    "converter.js": {
+      "bytes": 906715,
+      "sha256": "4f1f250f37b30407d10a6fab41aec999ddab15e69f9e3de202d7a299dba99448"
+    },
+    "LICENSE": {
+      "bytes": 11363,
+      "sha256": "2c27550900d2cabf83527a04600ba8042e3ba89e70ec077ff220afa48c8230a7"
+    },
+    "package.json": {
+      "bytes": 1670,
+      "sha256": "0d2d3ea9199609ea3e4e412cc322fbcdb3d3a68dcfaeacffa48b545392037952"
+    }
+  }
+}

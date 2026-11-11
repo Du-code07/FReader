@@ -1,0 +1,279 @@
+// The ergonomic layer over the embind surface: unwraps `{ok, value | error}`
+// envelopes into exceptions and wraps handles in a `Document`. See
+// `wasm/AGENTS.md` for why the binding itself does neither.
+
+import createOdrModule from './odr-core.mjs';
+
+export class OdrError extends Error {
+  /// `detail` carries `code` (`odr::ErrorCode`) and, for an unsupported type,
+  /// `fileType`.
+  constructor(type, message, detail) {
+    super(message);
+    this.name = type;
+    Object.assign(this, detail);
+  }
+}
+
+function unwrap(envelope) {
+  if (envelope.ok) {
+    return envelope.value;
+  }
+  const { type, message, ...detail } = envelope.error;
+  throw new OdrError(type, message, detail);
+}
+
+// Holds a handle into the wasm heap, so it must be closed: JS has no
+// destructors and the module cannot know when you are done.
+export class Document {
+  #core;
+  #handle;
+
+  constructor(core, handle) {
+    this.#core = core;
+    this.#handle = handle;
+  }
+
+  // Pass this across `postMessage` rather than the object, which does not
+  // survive structured cloning.
+  get handle() {
+    return this.#handle;
+  }
+
+  get fileType() {
+    return unwrap(this.#core.fileType(this.#handle));
+  }
+
+  // The name passed to `open`; empty where none was.
+  get fileName() {
+    return unwrap(this.#core.fileName(this.#handle));
+  }
+
+  meta() {
+    return JSON.parse(unwrap(this.#core.meta(this.#handle)));
+  }
+
+  capabilities() {
+    return unwrap(this.#core.capabilities(this.#handle));
+  }
+
+  isPasswordEncrypted() {
+    return unwrap(this.#core.isPasswordEncrypted(this.#handle));
+  }
+
+  // Anything already rendered is discarded, having come from the encrypted file.
+  decrypt(password) {
+    unwrap(this.#core.decrypt(this.#handle, password));
+    return this;
+  }
+
+  listViews() {
+    return unwrap(this.#core.listViews(this.#handle));
+  }
+
+  render(index = 0) {
+    return unwrap(this.#core.renderView(this.#handle, index));
+  }
+
+  read(path) {
+    return unwrap(this.#core.readPath(this.#handle, path));
+  }
+
+  // `capabilities()` narrowed to this document.
+  isEditable() {
+    return unwrap(this.#core.isEditable(this.#handle));
+  }
+
+  isSavable(encrypted = false) {
+    return unwrap(this.#core.isSavable(this.#handle, encrypted));
+  }
+
+  // The language the document states, as a BCP 47 tag, or null.
+  locale() {
+    return unwrap(this.#core.locale(this.#handle));
+  }
+
+  // Applies what the rendered page's `odr.generateDiff()` collected.
+  edit(diff) {
+    unwrap(this.#core.edit(this.#handle, diff));
+    return this;
+  }
+
+  // Structural edits, by the id the render wrote into the page as
+  // `data-odr-id`. Each returns the id of what it created; nothing crosses as
+  // a handle. `edit()` above is the same operations as one batch.
+  removeElement(id) {
+    unwrap(this.#core.removeElement(this.#handle, id));
+    return this;
+  }
+
+  insertTextBefore(anchorId, text) {
+    return unwrap(this.#core.insertTextBefore(this.#handle, anchorId, text));
+  }
+
+  insertTextAfter(anchorId, text) {
+    return unwrap(this.#core.insertTextAfter(this.#handle, anchorId, text));
+  }
+
+  appendText(parentId, text) {
+    return unwrap(this.#core.appendText(this.#handle, parentId, text));
+  }
+
+  // States `style` - `{bold, italic, underline, strikethrough, highlight,
+  // color, size}`, as the page's `odr.editing.format` takes it - on one run.
+  setTextStyle(id, style) {
+    unwrap(this.#core.setTextStyle(this.#handle, id, style));
+    return this;
+  }
+
+  // States `style` - `{align}`, as the page's `odr.editing.format` takes it
+  // - on one paragraph.
+  setParagraphStyle(id, style) {
+    unwrap(this.#core.setParagraphStyle(this.#handle, id, style));
+    return this;
+  }
+
+  // States `style` - the text keys of `setTextStyle`, and `fill` and
+  // `align` - on the cell at a position, as `odr.editing.format` takes it.
+  setCellStyle(sheet, column, row, style) {
+    unwrap(this.#core.setCellStyle(this.#handle, sheet, column, row, style));
+    return this;
+  }
+
+  // `setCellStyle` on every cell of a row or a column, also past what the
+  // file states.
+  setRowStyle(sheet, row, style) {
+    unwrap(this.#core.setRowStyle(this.#handle, sheet, row, style));
+    return this;
+  }
+
+  setColumnStyle(sheet, column, style) {
+    unwrap(this.#core.setColumnStyle(this.#handle, sheet, column, style));
+    return this;
+  }
+
+  insertRows(sheet, row, count) {
+    unwrap(this.#core.insertRows(this.#handle, sheet, row, count));
+    return this;
+  }
+
+  deleteRows(sheet, row, count) {
+    unwrap(this.#core.deleteRows(this.#handle, sheet, row, count));
+    return this;
+  }
+
+  insertColumns(sheet, column, count) {
+    unwrap(this.#core.insertColumns(this.#handle, sheet, column, count));
+    return this;
+  }
+
+  deleteColumns(sheet, column, count) {
+    unwrap(this.#core.deleteColumns(this.#handle, sheet, column, count));
+    return this;
+  }
+
+  recalculate() {
+    return unwrap(this.#core.recalculate(this.#handle));
+  }
+
+  // `afterId` of 0 splits before every child.
+  splitParagraph(paragraphId, afterId = 0) {
+    return unwrap(this.#core.splitParagraph(this.#handle, paragraphId, afterId));
+  }
+
+  mergeParagraphWithNext(paragraphId) {
+    unwrap(this.#core.mergeParagraphWithNext(this.#handle, paragraphId));
+    return this;
+  }
+
+  insertParagraphAfter(paragraphId) {
+    return unwrap(this.#core.insertParagraphAfter(this.#handle, paragraphId));
+  }
+
+  // Whether this pdf can take annotations.
+  isAnnotatable() {
+    return unwrap(this.#core.isAnnotatable(this.#handle));
+  }
+
+  // What `/P` states, or `null` without an `/Encrypt`.
+  permissions() {
+    return unwrap(this.#core.permissions(this.#handle));
+  }
+
+  // The annotated pdf's bytes; what `odr.annotation.getAnnotations()` collected
+  // goes in.
+  annotate(annotations) {
+    return unwrap(this.#core.annotate(this.#handle, annotations));
+  }
+
+  // The document's bytes, not the rendered html.
+  save(password) {
+    return password === undefined
+      ? unwrap(this.#core.save(this.#handle))
+      : unwrap(this.#core.saveEncrypted(this.#handle, password));
+  }
+
+  close() {
+    return unwrap(this.#core.close(this.#handle));
+  }
+
+  [Symbol.dispose]() {
+    this.close();
+  }
+}
+
+export class Odr {
+  #core;
+
+  constructor(core) {
+    this.#core = core;
+    this.enums = core.enumTables();
+  }
+
+  static async load(moduleOptions) {
+    return new Odr(await createOdrModule(moduleOptions));
+  }
+
+  version() {
+    return this.#core.version();
+  }
+
+  identify() {
+    return this.#core.identify();
+  }
+
+  fileTypes() {
+    return this.#core.fileTypes();
+  }
+
+  // `name` lets a signature-less format like markdown be detected.
+  detect(bytes, name = '') {
+    return unwrap(this.#core.detect(bytes, name));
+  }
+
+  // `fileType` forces an interpretation instead of detecting one; `name` is as
+  // in `detect`.
+  open(bytes, { fileType, name = '', ...config } = {}) {
+    const handle =
+      fileType === undefined
+        ? unwrap(this.#core.open(bytes, name, config))
+        : unwrap(this.#core.openAs(bytes, name, fileType, config));
+    return new Document(this.#core, handle);
+  }
+
+  // A new document of `fileType`, one of `enums.FileType`, with one empty
+  // paragraph or one empty sheet.
+  create(fileType, config = {}) {
+    return new Document(this.#core, unwrap(this.#core.create(fileType, config)));
+  }
+
+  setLogger(sink, level = 2) {
+    unwrap(this.#core.setLogger(sink, level));
+  }
+
+  // The escape hatch for a worker being torn down; prefer closing individually.
+  closeAll() {
+    unwrap(this.#core.closeAll());
+  }
+}
+
+export default Odr;
