@@ -311,8 +311,23 @@ jobs:
           import hashlib, json
           root = Path('assets/xlsx')
           manifest = json.loads((root / 'PROVENANCE.json').read_text())
-          if manifest.get('integrationRevision') != 87:
-              raise SystemExit('Excel assets are not v87. Upload the complete assets/xlsx folder.')
+          # Release numbers are informational; file checksums verify the package.
+          # A fixed release check here would reject valid assets after an update.
+          revision = manifest.get('integrationRevision')
+          if type(revision) is not int or revision < 1:
+              raise SystemExit('Invalid Excel asset manifest. Upload the complete assets/xlsx folder.')
+          if not manifest['engine'].get('version') or manifest['engine']['version'] != manifest['legacy'].get('version'):
+              raise SystemExit('Excel engine and legacy reader versions do not match. Upload both from the same ZIP.')
+          required = {
+              'integrationArtifacts': ('index.html', 'reader.js', 'reader.css', 'merge_ranges.js', 'THIRD_PARTY_NOTICES.txt'),
+              'engine': ('xlsx.js', 'xlsx_parser_bg.wasm'),
+              'legacy': ('xls.js', 'legacy_xls_direct_bg.wasm'),
+          }
+          for group, names in required.items():
+              records = manifest[group] if group == 'integrationArtifacts' else manifest[group]['artifacts']
+              for name in names:
+                  if name not in records:
+                      raise SystemExit(f'Missing Excel manifest entry: {group}/{name}')
           groups = [(root, manifest['integrationArtifacts'])]
           groups += [(root / group, manifest[group]['artifacts']) for group in ('engine', 'legacy')]
           for folder, files in groups:
@@ -327,14 +342,18 @@ jobs:
           for folder in ('assets/xlsx/', 'assets/xlsx/engine/', 'assets/xlsx/legacy/'):
               if f'- {folder}' not in pubspec:
                   raise SystemExit(f'Missing Flutter asset declaration: {folder}')
-          print('Excel assets verified')
+          for group in ('engine', 'legacy'):
+              for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
+                  if not (root / group / name).is_file():
+                      raise SystemExit(f'Missing Excel license notice: {group}/{name}')
+          print(f'Excel assets verified (integration revision {revision})')
           PY
 
       - name: 5. Build Release APK (Direct Install/Update) & AAB (Google Play Store)
         shell: bash
         run: |
           set -uo pipefail
-          BUILD_NUM=$((121 + ${{ github.run_number }}))
+          BUILD_NUM=$((123 + ${{ github.run_number }}))
 
           retry() {
             local n=1 max=3
