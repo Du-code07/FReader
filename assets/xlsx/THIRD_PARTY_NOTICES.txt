@@ -1,4 +1,4 @@
-FReader Excel viewer (v56)
+FReader Excel viewer (v87)
 
 Office Open XML Viewer: @silurus/ooxml 0.89.8
 Legacy XLS parser: @silurus/ooxml-legacy-office 0.89.8
@@ -22,7 +22,7 @@ fonts are preferred; substitution can change text metrics and line breaks.
 
 FReader modifications: .mjs filenames and references renamed to .js for
 Android asset MIME handling; legacy companion imports point to the bundled
-engine. FReader v56 patches renderer-CCA_bQB8.js to test merged-cell
+engine. FReader v87 patches renderer-CCA_bQB8.js to test merged-cell
 continuation membership with the range interval index in ../merge_ranges.js,
 instead of expanding every covered coordinate. Original merged ranges,
 anchor cells and their formatting remain intact. The local Flutter bridge,

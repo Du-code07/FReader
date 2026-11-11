@@ -1,6 +1,10 @@
 html, body, #sheet { margin: 0; width: 100%; height: 100%; overflow: hidden; }
 body { background: #fff; font-family: 'Noto Sans KR', sans-serif; }
 #sheet { position: relative; touch-action: none; overscroll-behavior: none; }
+/* The engine adds a scroll container inside #sheet. touch-action must also
+   cover that nearest scroll ancestor, otherwise Android cancels our pointers
+   and takes over vertical scrolling halfway through a diagonal pan/pinch. */
+#sheet * { touch-action: none !important; overscroll-behavior: none; }
 #sheet canvas { display: block; }
 body[data-theme="sepia"] { background: #fbf0d9; }
 body[data-theme="sepia"] #sheet { filter: sepia(.2); }

@@ -1,4 +1,4 @@
-// FReader v56: keep merged-cell coverage as rectangles, never one entry per cell.
+// FReader v87: keep merged-cell coverage as rectangles, never one entry per cell.
 // Whole-column merges may span 1,048,576 rows despite having almost no data.
 // Only the renderer's membership operation is needed for continuation cells.
 export function mergedContinuations(ranges) {

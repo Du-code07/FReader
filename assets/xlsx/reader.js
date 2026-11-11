@@ -14,6 +14,7 @@ let loaded = false, opening = false, awaitingPassword = false;
 let events = [], flushing = false, navigation = Promise.resolve(), fontPromise;
 let locationTimer, resizeTimer, frameRequest = 0, desiredView, applyingView = false;
 let gesture = null;
+let searchMatches = [];
 const pointers = new Map();
 
 function emit(type, data = {}) { events.push({ type, ...data }); void flush(); }
@@ -42,6 +43,7 @@ function fail(error) { emit('error', { message: errorMessage(error) }); return f
 function wipe(bytes) { if (bytes?.byteLength) bytes.fill(0); }
 function closeViewer() {
   loaded = false; desiredView = null; gesture = null; pointers.clear();
+  searchMatches = [];
   clearTimeout(locationTimer); clearTimeout(resizeTimer); cancelAnimationFrame(frameRequest);
   viewer?.destroy(); viewer = null; host.replaceChildren();
 }
@@ -161,7 +163,7 @@ function enqueue(action) {
   const current = generation;
   navigation = navigation.catch(() => {}).then(async () => {
     if (!loaded || !viewer || disposed || current !== generation) return;
-    try { await action(); if (current === generation) reportLocation(); }
+    try { const result = await action(); if (current === generation) reportLocation(); return result; }
     catch (error) { if (!disposed && current === generation) fail(error); }
   });
   return navigation;
@@ -179,6 +181,31 @@ function next() { return turnSheet(1); }
 function previous() { return turnSheet(-1); }
 function progress(value) { return enqueue(() => restorePosition(null, Math.max(0, Math.min(1, Number(value) || 0)))); }
 function highlightSelection() { viewer?.setSelectionColor('#ffc107'); }
+
+// Connect v86's existing Find bar to all workbook sheets, including hidden ones.
+function search(text) {
+  return enqueue(async () => {
+    searchMatches = await viewer.findText(String(text || ''));
+    return { count: searchMatches.length };
+  });
+}
+function cellAddress(row, col) {
+  let letters = '';
+  while (col > 0) { col--; letters = String.fromCharCode(65 + col % 26) + letters; col = Math.floor(col / 26); }
+  return `${letters}${row}`;
+}
+function showSearchResult(index) {
+  return enqueue(async () => {
+    const match = searchMatches[Math.trunc(Number(index))];
+    if (!match) return;
+    const { sheet, row, col } = match.location;
+    await viewer.goToSheet(sheet);
+    await viewer.scrollToCell(cellAddress(row, col), { align: 'center' });
+  });
+}
+function clearSearch() {
+  return enqueue(() => { searchMatches = []; viewer.clearFind(); });
+}
 
 // Native mobile panning and pinch zoom. A horizontal drag stays inside a sheet;
 // sheet changes use the existing toolbar, volume keys, and contents drawer.
@@ -243,6 +270,7 @@ function destroy() {
   closeViewer(); wipe(incoming); incoming = null; received = 0; events = [];
 }
 window.freaderXlsx = { beginDocument, appendChunk, openDocument, configure, display, next, previous, progress, highlightSelection, destroy,
+  search, showSearchResult, clearSearch,
   getState: () => ({ ready: !disposed, loaded, page: viewer?.sheetIndex || 0, count: viewer?.sheetCount || 0,
     sheets: viewer?.sheetNames || [], viewport: viewer?.getViewportOffset() || { x: 0, y: 0 }, scale: viewer?.getScale() || 1,
     received, awaitingPassword, format: options.format, maxBytes: MAX_BYTES }) };

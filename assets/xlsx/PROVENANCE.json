@@ -5,7 +5,7 @@
     "license": "MIT",
     "npmIntegrity": "sha512-t5dJ+pLGUTmjDjGNV9wE1cdRqFg5vDSVZN7I7okMSiMNnCR9tdk0P7O9yZ8EtXgtV2rToF7E4L6Lbca7yt+4+w==",
     "npmTarball": "https://registry.npmjs.org/@silurus/ooxml/-/ooxml-0.89.8.tgz",
-    "modifications": "ES module .mjs filenames/references renamed to .js for Android asset MIME handling. FReader v56 replaces merged continuation coordinate expansion in renderer-CCA_bQB8.js with the range interval index in ../merge_ranges.js. Original parsed merge rectangles, anchors and styles remain intact.",
+    "modifications": "ES module .mjs filenames/references renamed to .js for Android asset MIME handling. FReader v87 replaces merged continuation coordinate expansion in renderer-CCA_bQB8.js with the range interval index in ../merge_ranges.js. Original parsed merge rectangles, anchors and styles remain intact.",
     "artifacts": {
       "abort-JztSoyw2.js": {
         "upstreamName": "abort-JztSoyw2.js",
@@ -283,27 +283,28 @@
       }
     }
   },
-  "integrationRevision": 56,
+  "integrationRevision": 87,
   "integrationArtifacts": {
     "index.html": {
       "bytes": 666,
       "sha256": "553bd9f6128b2f1215fbe7d14d2bff17a4837a1067722fbb7dd5d334576a1c08"
     },
     "reader.js": {
-      "bytes": 14041,
-      "sha256": "3ecbaf46b94ee225055cdfbeb1c28ef27b4b5e1bbcf99888a72797957c803c0d"
+      "bytes": 15020,
+      "sha256": "3c9a5a9aa2ace843065892be832c18ca1bf21501369b2c1f8cb1bfb4ed3fd5cf"
     },
     "reader.css": {
-      "bytes": 487,
-      "sha256": "b6e1f19885a6a111084f373d58468999296f7928e311ab2c211f5fe16e3777fc"
+      "bytes": 790,
+      "sha256": "7f2d72ce11c0beb5566f3370b1e89a2e4d077d33512763ed08b906b456eb8a06"
     },
     "merge_ranges.js": {
       "bytes": 1707,
-      "sha256": "fce24139691cdb8cbc049668c8483075c0e2a619ed03039b84c1fe14852efae4"
+      "sha256": "b702847e49fada691203a4efececb111d22403d0b4eec46c9aa9dc266110bde6"
     },
     "THIRD_PARTY_NOTICES.txt": {
       "bytes": 2167,
-      "sha256": "d71da1846f7f5a425d91dd0ba8ae690fd87965ad074c91caece71c3e5efc5c68"
+      "sha256": "65d6927a5f2e89b988972b73cf9470cab9998943d69120a8497f16ad80934e54"
     }
-  }
+  },
+  "integrationNotes": "Restored onto v86 without replacing its existing reader UI or other engines. All workbook sheets use the existing contents drawer. Viewport-only rendering, whole-column merge interval index, mobile scroll-ancestor touch handling, and existing Find bar integration."
 }
