@@ -55,11 +55,11 @@
     },
     "lib/assets/webpage/html/epubView.js": {
       "upstream_sha256": "0b19d487a5739e97c5ed8073b860e2c8b986d43dbf26c42a300fba8074e38cb1",
-      "vendored_sha256": "6dc25b3262cabfc17af76321f8d956e4e2f97df14bf10fa5ba9e84c90d76290b"
+      "vendored_sha256": "ff8024e0d8dcceb983a4637350ff57857d86973ef5b4e241aca5cc285609083d"
     },
     "lib/assets/webpage/html/swipe.html": {
       "upstream_sha256": "cbbacbfd24aa0b686091b751af9c4481a9ba63a5168679f1e7bf66b8ffd58b07",
-      "vendored_sha256": "6dbd3201f04e646508c150e28fd73dc8b0c0ac85215a0c3f5842eb4f69463995"
+      "vendored_sha256": "93815dbcec2176590e1ea7349b9a5c7bbaaa40e58de4348d60df1bf9c990df05"
     },
     "lib/assets/webpage/html/epub_cfi_utils.js": {
       "upstream_sha256": "9a30c52c1feeff7ad883f85605a6863ed97b1b8a891737f90c74a0b85350aa7b",
@@ -99,7 +99,7 @@
     },
     "lib/src/platform/epub_web_view_io.dart": {
       "upstream_sha256": "cde3ab08b754b239b2f2dd0c84f1fdb75f89f427c718f0dc1d7d963369e08eb2",
-      "vendored_sha256": "66bd504e572da6b8f3d46175af982dba9babe825e7c0abc08d2bb489a018248d"
+      "vendored_sha256": "686b6bab64870003548a46833278b21529e876ae4235dafa24cdce8f262781ce"
     },
     "lib/src/platform/epub_web_view_web.dart": {
       "upstream_sha256": "ece16245c81cdfd86eb9bf6bb5b2fe41bb73c7d532d1e460c19bca03cfb3ca25",
@@ -131,7 +131,7 @@
     },
     "lib/src/models/epub_location.dart": {
       "upstream_sha256": "d3ad1a9d5a330f662aa66fadc73984da5c243f17157ccaa390e2bfc0550a90d1",
-      "vendored_sha256": "d3ad1a9d5a330f662aa66fadc73984da5c243f17157ccaa390e2bfc0550a90d1"
+      "vendored_sha256": "239b2e45d83d5fba644403b4f19c4ab52629f75a72f1a71cf6faeb43d69828ab"
     },
     "lib/src/models/epub_context_menu.dart": {
       "upstream_sha256": "895695851c4afe35b4bb7af2e1be49b187ae1d8a3729a778405231c1133ba174",

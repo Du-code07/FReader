@@ -109,7 +109,7 @@ class _IoEpubView extends StatefulWidget {
 }
 
 class _IoEpubViewState extends State<_IoEpubView> {
-  final GlobalKey _webViewKey = GlobalKey();
+  GlobalKey _webViewKey = GlobalKey();
   static InAppLocalhostServer? _localhostServer;
   bool _isServerReady = defaultTargetPlatform != TargetPlatform.macOS;
 
@@ -194,6 +194,11 @@ class _IoEpubViewState extends State<_IoEpubView> {
             ? null
             : 'packages/flutter_epub_viewer/lib/assets/webpage/html/swipe.html',
         initialSettings: _settings,
+        // FReader(팅김 방지): 화면 그리는 프로세스가 메모리 부족 등으로 죽으면 처리하지 않을 때 앱 전체가 꺼진다.
+        // 처리했다고 알리고 WebView를 새로 만들어 책을 다시 연다.
+        onRenderProcessGone: (controller, detail) async {
+          if (mounted) setState(() => _webViewKey = GlobalKey());
+        },
         onWebViewCreated: (controller) async {
           config.onControllerCreated(IoEpubWebViewController(controller));
           if (isMacOs) {

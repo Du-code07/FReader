@@ -228,6 +228,18 @@ function renderBook(data, opts, loadToken) {
   opening.catch(function (e) {
     if (loadToken === currentLoadToken) reportLoadError(e);
   });
+  // FReader: 오른쪽→왼쪽으로 넘기는 책(세로쓰기 일본 소설 등)은 이어 붙이는 보기(continuous)에서
+  // 다음 장으로 넘어갔다가 앞 장으로 되돌아가는 문제가 있어, 한 장씩 보여 주는 보기(default)로 연다.
+  // (rendition.start 보다 먼저 실행되도록 renderTo 전에 등록)
+  book.opened.then(function () {
+    try {
+      var md = (book.package && book.package.metadata) || {};
+      var rtl = md.direction === 'rtl' || (book.spine && book.spine.direction === 'rtl');
+      if (rtl && rendition && rendition.settings && rendition.settings.manager === 'continuous') {
+        rendition.settings.manager = 'default';
+      }
+    } catch (e) {}
+  });
   rendition = book.renderTo("viewer", {
     manager: manager,
     flow: flow,
@@ -749,7 +761,8 @@ function renderBook(data, opts, loadToken) {
 
       // Set up a periodic check to ensure all frames are being polled
       // (in case frames are added/removed dynamically)
-      setInterval(function () {
+      // FReader(배터리): 안드로이드는 선택 이벤트가 정상 동작하므로 2초마다 감시를 다시 켜는 이 타이머는 iOS에서만
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent || '')) setInterval(function () {
         try {
           var currentContents = rendition.getContents();
           currentContents.forEach(function (cont, index) {
@@ -2160,7 +2173,10 @@ function locationPayload(location) {
     // Screen pages within the current chapter (paginated flow only).
     chapterPage: isScrolledFlow() ? null : displayedPage.page || null,
     chapterTotalPages: isScrolledFlow() ? null : displayedPage.total || null,
-    printedPage: printedPageFromCfi(location.start.cfi)
+    printedPage: printedPageFromCfi(location.start.cfi),
+    // First/last screen of the whole book (lets the app skip turns that cannot happen).
+    atStart: !!location.atStart,
+    atEnd: !!location.atEnd
   };
   return Promise.all([
     cfiToXPath(location.start.cfi),
@@ -2453,9 +2469,24 @@ function setManager(manager) {
   rendition.manager(manager);
 }
 
+var fontRealignTimer = null;
 function setFontSize(fontSize) {
+  // FReader: 글자 크기가 바뀌면 쪽(단) 경계가 달라져 화면이 두 쪽에 걸쳐 보일 수 있다
+  // → 보던 곳을 기억해 두었다가, 새 글자 크기로 다시 나뉜 쪽에 맞춰 다시 보여 준다
+  var cfi = null;
+  try {
+    var loc = rendition.currentLocation();
+    cfi = loc && loc.start && loc.start.cfi;
+  } catch (e) {}
   rendition.themes.fontSize(`${fontSize}px`);
-  rendition.reportLocation();
+  if (fontRealignTimer) clearTimeout(fontRealignTimer);
+  fontRealignTimer = setTimeout(function () {
+    fontRealignTimer = null;
+    var shown = cfi ? rendition.display(cfi) : null;
+    Promise.resolve(shown).catch(function () {}).then(function () {
+      try { rendition.reportLocation(); } catch (e) {}
+    });
+  }, 120);
 }
 
 // Extracts the text for a CFI range and resolves with {text, cfiRange, xpathRange}.
@@ -2516,9 +2547,17 @@ function getRectFromCfi(cfiRange) {
 }
 
 ///update theme
+// FReader: 색상만 다시 적용하는 호출(customCss 없음)이 앞서 받은 배경·글자색 규칙을 지워
+// 다크 모드에서 흰 바탕·검은 글자로 돌아가던 문제 → 마지막으로 받은 customCss를 기억해 함께 적용한다.
+var freaderLastCustomCss = null;
 function updateTheme(backgroundColor, foregroundColor, customCss) {
   var rules = {};
   var themeObj = {};
+  if (customCss && customCss !== "null" && typeof customCss === 'object') {
+    freaderLastCustomCss = customCss;
+  } else {
+    customCss = freaderLastCustomCss;
+  }
 
   // Build theme object with available colors
   // Only include properties that are provided and not empty

@@ -27,6 +27,10 @@ class EpubLocation {
   /// no page list.
   String? printedPage;
 
+  /// Whether this is the first / last screen of the whole book.
+  bool atStart;
+  bool atEnd;
+
   EpubLocation({
     required this.startCfi,
     required this.endCfi,
@@ -36,6 +40,8 @@ class EpubLocation {
     this.chapterPage,
     this.chapterTotalPages,
     this.printedPage,
+    this.atStart = false,
+    this.atEnd = false,
   });
 
   factory EpubLocation.fromJson(Map<String, dynamic> json) => EpubLocation(
@@ -47,6 +53,8 @@ class EpubLocation {
         chapterPage: (json['chapterPage'] as num?)?.toInt(),
         chapterTotalPages: (json['chapterTotalPages'] as num?)?.toInt(),
         printedPage: json['printedPage'] as String?,
+        atStart: json['atStart'] == true,
+        atEnd: json['atEnd'] == true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -58,5 +66,7 @@ class EpubLocation {
         'chapterPage': chapterPage,
         'chapterTotalPages': chapterTotalPages,
         'printedPage': printedPage,
+        'atStart': atStart,
+        'atEnd': atEnd,
       };
 }
