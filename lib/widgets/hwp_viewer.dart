@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../services/docx_layout_hints.dart';
 
@@ -18,6 +19,76 @@ class HwpReaderController {
   Future<void> previous() async => _invoke?.call('previous', []);
   Future<void> toProgress(double progress) async =>
       _invoke?.call('progress', [progress]);
+
+  // ── 파일 내 단어 검색 ──
+  Future<Object?> Function(String, List<Object?>)? _query;
+
+  /// 찾은 곳 수 (못 찾거나 아직 열리지 않았으면 0)
+  Future<int> search(String text) async {
+    final result = await _query?.call('search', [text]);
+    if (result is Map) return (result['count'] as num?)?.toInt() ?? 0;
+    return 0;
+  }
+
+  Future<void> showSearchResult(int index) async => _query?.call('showSearchResult', [index]);
+  Future<void> clearSearch() async => _query?.call('clearSearch', []);
+
+  /// PPT: 슬라이드 전체 그림(JPEG base64) — 글자가 그림으로만 된 슬라이드의 글자를 읽는 데 씀
+  Future<String?> slideImage(int index, {int width = 1800}) async {
+    final result = await _query?.call('slideImage', [index, width]);
+    return result is String && result.isNotEmpty ? result : null;
+  }
+
+  /// 지금 화면에 보이는 글과 위치 [{t, x, y, w, h}] (화면 크기 대비 0~1) — 내보낸 PDF의 글자 층용
+  Future<List<Map<String, Object?>>> visibleTextBoxes() async {
+    final result = await _query?.call('visibleTextBoxes', []);
+    if (result is! List) return const [];
+    return [
+      for (final b in result)
+        if (b is Map) {'t': b['t'], 'x': b['x'], 'y': b['y'], 'w': b['w'], 'h': b['h']},
+    ];
+  }
+
+  /// 쪽마다의 글 [from, to) — '목차' 쪽 찾기용 (지원하지 않으면 빈 목록)
+  Future<List<String>> pageText(int from, int to) async {
+    final result = await _query?.call('pageText', [from, to]);
+    if (result is! List) return const [];
+    return [for (final t in result) (t ?? '').toString()];
+  }
+
+  /// 목차 후보: 번호로 시작하거나 굵은 글씨가 있는 짧은 문단들 {title, page(0부터), bold, boldRatio, centered, fs}.
+  /// 한글은 [from, to) 쪽만 (워드는 한 번에 전부)
+  Future<List<Map<String, Object?>>> headingCandidates(int from, int to) async {
+    final result = await _query?.call('headingCandidates', [from, to]);
+    if (result is! List) return const [];
+    return [
+      for (final item in result)
+        if (item is Map && item['page'] is num)
+          {
+            'title': (item['title'] ?? '').toString(),
+            'page': (item['page'] as num).toInt(),
+            'bold': item['bold'] == true,
+            'boldRatio': (item['boldRatio'] as num?)?.toDouble() ?? 0,
+            'centered': item['centered'] == true,
+            'fs': (item['fs'] as num?)?.toDouble() ?? 0,
+            'body': (item['body'] as num?)?.toDouble() ?? 0,
+          },
+    ];
+  }
+
+  /// PPT: [from, to) 슬라이드마다 줄들 {t, y, fs, bold}
+  Future<List<List<Map<String, Object?>>>> slideLineData(int from, int to) async {
+    final result = await _query?.call('slideLineData', [from, to]);
+    if (result is! List) return const [];
+    return [
+      for (final slide in result)
+        [
+          if (slide is List)
+            for (final l in slide)
+              if (l is Map) {'t': (l['t'] ?? '').toString(), 'y': (l['y'] as num?)?.toDouble() ?? 0, 'fs': (l['fs'] as num?)?.toDouble() ?? 0, 'bold': l['bold'] == true},
+        ],
+    ];
+  }
 }
 
 class HwpViewer extends StatefulWidget {
@@ -29,11 +100,15 @@ class HwpViewer extends StatefulWidget {
   final bool spread;
   final bool rtl;
   final ValueChanged<int> onLoaded;
-  final ValueChanged<List<String>>? onSheetNames;
   final void Function(int page, int pageCount, String position, double progress)
   onLocation;
   final ValueChanged<String> onError;
   final VoidCallback onCancelled;
+  /// 쪽 안의 그림까지 다 그려졌을 때 (워드·한글)
+  final ValueChanged<int>? onPageReady;
+  /// 파워포인트: 지금 슬라이드에서 남은 애니메이션 단계 수 (위치가 바뀔 때마다)
+  final ValueChanged<int>? onStepsLeft;
+  final ValueChanged<List<String>>? onSheetNames;
 
   const HwpViewer({
     super.key,
@@ -45,10 +120,12 @@ class HwpViewer extends StatefulWidget {
     required this.spread,
     required this.rtl,
     required this.onLoaded,
-    this.onSheetNames,
     required this.onLocation,
     required this.onError,
     required this.onCancelled,
+    this.onPageReady,
+    this.onStepsLeft,
+    this.onSheetNames,
   });
 
   @override
@@ -60,9 +137,10 @@ class _HwpViewerState extends State<HwpViewer> {
   bool get _isDocx => widget.filePath.toLowerCase().endsWith('.docx');
   bool get _isDoc => widget.filePath.toLowerCase().endsWith('.doc');
   bool get _isWord => _isDocx || _isDoc;
+  // 파워포인트(.ppt/.pptx)도 같은 문서 화면에서 연다
+  bool get _isPresentation => RegExp(r'\.pptx?$', caseSensitive: false).hasMatch(widget.filePath);
   bool get _isSpreadsheet => RegExp(r'\.xls[xm]?$', caseSensitive: false).hasMatch(widget.filePath);
   String get _spreadsheetFormat => widget.filePath.split('.').last.toLowerCase();
-  bool get _isPresentation => RegExp(r'\.pptx?$', caseSensitive: false).hasMatch(widget.filePath);
   String get _presentationFormat => widget.filePath.toLowerCase().endsWith('.pptx') ? 'pptx' : 'ppt';
   String get _format => _isSpreadsheet ? _spreadsheetFormat.toUpperCase() : _isPresentation ? _presentationFormat.toUpperCase() : _isDocx
       ? 'DOCX'
@@ -71,6 +149,23 @@ class _HwpViewerState extends State<HwpViewer> {
       : 'HWP';
   String get _entry =>
       '$_origin/assets/flutter_assets/assets/${_isSpreadsheet ? 'xlsx' : _isPresentation ? 'ppt' : _isWord ? 'docx' : 'hwp'}/index.html';
+  /// 표시 파일을 못 불러왔을 때: 앱 안에 그 파일이 아예 없으면(빌드에 빠짐) 무엇이 빠졌는지 알려 준다
+  Future<void> _reportMissingAsset(String url, String description) async {
+    final marker = '$_origin/assets/flutter_assets/';
+    if (url.startsWith(marker)) {
+      final asset = Uri.decodeComponent(url.substring(marker.length).split('?').first);
+      try {
+        await rootBundle.load(asset);
+      } catch (_) {
+        final folder = asset.contains('/') ? asset.substring(0, asset.lastIndexOf('/')) : asset;
+        _reportError('앱 안에 표시 파일($asset)이 없습니다. GitHub에 $folder 폴더가 올라가 있는지, '
+            'pubspec.yaml이 새 버전인지 확인한 뒤 다시 빌드해 주세요.');
+        return;
+      }
+    }
+    _reportError('문서 표시 파일을 불러오지 못했습니다: $description');
+  }
+
   String get _jsObject => _isSpreadsheet ? 'freaderXlsx' : _isPresentation ? 'freaderPpt' : _isWord ? 'freaderDocx' : 'freaderHwp';
   Map<String, Object> _docxLayout = {};
   static const _maxBytes = 256 * 1024 * 1024;
@@ -95,12 +190,16 @@ class _HwpViewerState extends State<HwpViewer> {
     if (_isPresentation) 'format': _presentationFormat,
     if (_isSpreadsheet) 'format': _spreadsheetFormat,
     if (_isDocx) 'docxLayout': _docxLayout,
+    if (_cacheKey != null) 'cacheKey': _cacheKey,
   };
+  /// 파일이 바뀌면 달라지는 열쇠 (변환된 그림 저장소 이름에 사용)
+  String? _cacheKey;
 
   @override
   void initState() {
     super.initState();
     widget.controller._invoke = _navigate;
+    widget.controller._query = _ask;
     _armTimeout();
   }
 
@@ -146,6 +245,20 @@ class _HwpViewerState extends State<HwpViewer> {
     }
   }
 
+  /// 결과를 돌려받는 호출 (검색). 실패해도 문서 오류로 띄우지 않는다.
+  Future<Object?> _ask(String method, List<Object?> args) async {
+    if (_disposed || _failed || _web == null || !_loaded) return null;
+    try {
+      final result = await _web!.callAsyncJavaScript(
+        functionBody: 'return await window[viewer][method](...args);',
+        arguments: {'viewer': _jsObject, 'method': method, 'args': args},
+      );
+      return result?.error == null ? result?.value : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _navigate(String method, List<Object?> args) async {
     // Hardware keys and the existing toolbar can be used during initialization.
     if (!_loaded) return;
@@ -159,6 +272,10 @@ class _HwpViewerState extends State<HwpViewer> {
     try {
       final source = File(widget.filePath);
       final length = await source.length();
+      try {
+        final modified = (await source.lastModified()).millisecondsSinceEpoch;
+        _cacheKey = '${widget.filePath.hashCode.toUnsigned(32)}-$length-$modified';
+      } catch (_) {}
       if (length < 1 || length > _maxBytes) {
         throw const FormatException('비어 있거나 256MB를 초과하는 문서입니다.');
       }
@@ -211,19 +328,22 @@ class _HwpViewerState extends State<HwpViewer> {
         unawaited(_invoke('configure', [_options]));
         widget.onLoaded((event['pageCount'] as num).toInt());
         if (_isSpreadsheet && event['chapters'] is List) {
-          widget.onSheetNames?.call(
-            (event['chapters'] as List).map((name) => name.toString()).toList(),
-          );
+          widget.onSheetNames?.call([for (final name in event['chapters'] as List) name.toString()]);
         }
         break;
       case 'location':
         if (!_loaded) return;
+        final stepCount = event['stepCount'], step = event['step'];
+        if (stepCount is num) widget.onStepsLeft?.call((stepCount - (step is num ? step : 0)).toInt());
         widget.onLocation(
           (event['page'] as num).toInt(),
           (event['pageCount'] as num).toInt(),
           event['position'] as String,
           (event['progress'] as num).toDouble(),
         );
+        break;
+      case 'pageReady':
+        if (_loaded) widget.onPageReady?.call((event['page'] as num?)?.toInt() ?? -1);
         break;
       case 'password':
         unawaited(_requestPassword(event['incorrect'] == true));
@@ -284,7 +404,9 @@ class _HwpViewerState extends State<HwpViewer> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller._invoke = null;
+      oldWidget.controller._query = null;
       widget.controller._invoke = _navigate;
+    widget.controller._query = _ask;
     }
     if (_loaded &&
         (oldWidget.theme != widget.theme ||
@@ -312,6 +434,7 @@ class _HwpViewerState extends State<HwpViewer> {
       fit: StackFit.expand,
       children: [
         InAppWebView(
+          // Excel owns two-dimensional pan and pinch; the outer reader still owns its toolbar.
           gestureRecognizers: _isSpreadsheet
               ? {Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer())}
               : null,
@@ -370,7 +493,7 @@ class _HwpViewerState extends State<HwpViewer> {
           onReceivedError: (controller, request, error) {
             if (request.isForMainFrame == true ||
                 request.url.toString().startsWith('$_origin/assets/')) {
-              _reportError('문서 표시 파일을 불러오지 못했습니다: ${error.description}');
+              unawaited(_reportMissingAsset(request.url.toString(), error.description));
             }
           },
           onReceivedHttpError: (controller, request, response) {

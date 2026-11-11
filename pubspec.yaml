@@ -1,7 +1,7 @@
 name: my_ebook_reader
-description: Fast, lightweight Android eBook, PDF, Word, Excel, PowerPoint, HWP, TXT, and Comic Reader.
+description: Fast, lightweight Android eBook, PDF, Word, PowerPoint, Excel, HWP, TXT, and Comic Reader.
 publish_to: 'none'
-version: 2.50.0+137
+version: 2.79.0+121
 
 environment:
   sdk: '>=3.8.0 <4.0.0'
@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # EPUB 뷰어: 화면 크기·불러오기 문제를 고친 버전을 프로젝트 안에 포함 (vendor 폴더)
   flutter_epub_viewer:
     path: vendor/flutter_epub_viewer
   flutter_inappwebview: 6.2.0-beta.3
@@ -16,6 +17,7 @@ dependencies:
   shared_preferences: ^2.3.0
   path_provider: ^2.1.4
   archive: ^3.6.1
+  # TXT: 한국어 옛 인코딩(EUC-KR/CP949) 읽기, DOCX·EPUB 구조 읽기
   cp949_codec: 1.0.2
   xml: ^6.5.0
 
@@ -26,6 +28,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # TXT / 한글(HWP·HWPX) / 워드(DOC·DOCX) 열람용 화면·엔진·글꼴 (기기 안에서만 처리)
   assets:
     - assets/txt/
     - assets/hwp/
@@ -34,6 +37,7 @@ flutter:
     - assets/docx/engine/
     - assets/docx/metafile/
     - assets/docx/fonts/
+    - assets/textures/
     - assets/ppt/
     - assets/ppt/engine/
     - assets/ppt/legacy/

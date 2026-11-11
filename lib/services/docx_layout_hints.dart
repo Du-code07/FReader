@@ -11,7 +11,52 @@ class DocxLayoutHints {
   static const _wp =
       'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
   static const _c = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
+  static const _m = 'http://schemas.openxmlformats.org/officeDocument/2006/math';
   static const _r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+
+  /// 글상자가 아닌 단순 도형(네모·둥근 네모·동그라미)만: 위치·크기·선·채우기
+  static Map<String, Object>? _shape(XmlElement alternate) {
+    final choice = alternate.children.whereType<XmlElement>().where((e) => e.name.local == 'Choice').firstOrNull;
+    final drawing = choice?.findAllElements('drawing', namespace: _w).firstOrNull;
+    final anchor = drawing?.findAllElements('anchor', namespace: _wp).firstOrNull;
+    final wsp = anchor?.descendants.whereType<XmlElement>().where((e) => e.name.local == 'wsp').firstOrNull;
+    if (anchor == null || wsp == null) return null;
+    if (wsp.descendants.whereType<XmlElement>().any((e) => e.name.local == 'txbx')) return null;
+    final spPr = wsp.children.whereType<XmlElement>().where((e) => e.name.local == 'spPr').firstOrNull;
+    final geom = spPr?.getElement('prstGeom', namespace: _a)?.getAttribute('prst') ?? '';
+    if (!const {'rect', 'roundRect', 'ellipse'}.contains(geom)) return null;
+    String? color(XmlElement? holder) {
+      final c = holder?.getElement('solidFill', namespace: _a)?.getElement('srgbClr', namespace: _a)?.getAttribute('val');
+      return c == null ? null : '#$c';
+    }
+    final ln = spPr?.getElement('ln', namespace: _a);
+    final style = wsp.children.whereType<XmlElement>().where((e) => e.name.local == 'style').firstOrNull;
+    final String stroke = ln?.getElement('noFill', namespace: _a) != null
+        ? 'none'
+        : color(ln) ?? (style?.getElement('lnRef', namespace: _a) != null ? '#2F528F' : 'none');
+    final String fill = spPr?.getElement('noFill', namespace: _a) != null
+        ? 'none'
+        : color(spPr) ?? (style?.getElement('fillRef', namespace: _a) != null ? '#4472C4' : 'none');
+    Map<String, Object> axis(String name) {
+      final p = anchor.getElement(name, namespace: _wp);
+      return {
+        if (p?.getAttribute('relativeFrom') != null) 'relativeFrom': p!.getAttribute('relativeFrom')!,
+        if (p?.getElement('posOffset', namespace: _wp) != null) 'offset': p!.getElement('posOffset', namespace: _wp)!.innerText,
+      };
+    }
+    final extent = anchor.getElement('extent', namespace: _wp);
+    return {
+      'geom': geom,
+      'stroke': stroke,
+      'strokeWidth': int.tryParse(ln?.getAttribute('w') ?? '') ?? 12700,
+      'fill': fill,
+      'behind': anchor.getAttribute('behindDoc') == '1',
+      'horizontal': axis('positionH'),
+      'vertical': axis('positionV'),
+      'width': extent?.getAttribute('cx') ?? '0',
+      'height': extent?.getAttribute('cy') ?? '0',
+    };
+  }
 
   static Map<String, Object> _drawing(XmlElement node, int index) {
     final anchor = node.findAllElements('anchor', namespace: _wp).firstOrNull;
@@ -30,7 +75,25 @@ class DocxLayoutHints {
       };
     }
     final extent = shape.getElement('extent', namespace: _wp);
+    // 사진 여부와 Word에서 자른 영역(a:srcRect, 1/100000 단위)
+    final blip = node.findAllElements('blip', namespace: _a).firstOrNull;
+    final bool picture = blip != null &&
+        (blip.getAttribute('embed', namespace: _r) != null || blip.getAttribute('link', namespace: _r) != null);
+    final srcRect = blip?.parentElement?.getElement('srcRect', namespace: _a);
+    int? crop(String n) => int.tryParse(srcRect?.getAttribute(n) ?? '');
+    final bool cropped = srcRect != null && [crop('l'), crop('t'), crop('r'), crop('b')].any((v) => v != null && v != 0);
+    // 사진을 돌리거나 뒤집은 경우 (a:xfrm rot는 1/60000도)
+    final xfrm = picture ? node.findAllElements('xfrm', namespace: _a).firstOrNull : null;
+    final double rotation = ((int.tryParse(xfrm?.getAttribute('rot') ?? '') ?? 0) / 60000.0) % 360;
+    final bool flipH = xfrm?.getAttribute('flipH') == '1' || xfrm?.getAttribute('flipH') == 'true';
+    final bool flipV = xfrm?.getAttribute('flipV') == '1' || xfrm?.getAttribute('flipV') == 'true';
     return {
+      'picture': picture,
+      if (rotation.abs() > 0.01) 'rotation': rotation,
+      if (flipH) 'flipH': true,
+      if (flipV) 'flipV': true,
+      if (cropped)
+        'crop': {'l': crop('l') ?? 0, 't': crop('t') ?? 0, 'r': crop('r') ?? 0, 'b': crop('b') ?? 0},
       'index': index,
       'kind': anchor == null ? 'inline' : 'anchor',
       'wrap': shape.children.whereType<XmlElement>()
@@ -221,6 +284,41 @@ class DocxLayoutHints {
           'eastAsia': ea.isNotEmpty ? ea : hang ?? latin,
         };
       }
+      // 각주·미주 본문 (변환 엔진이 빠뜨리므로 따로 읽어 화면에 붙인다)
+      final notes = <String, String>{};
+      for (final kind in ['footnote', 'endnote']) {
+        final notesPart = part('word/${kind}s.xml');
+        for (final note in notesPart?.findAllElements(kind, namespace: _w) ?? <XmlElement>[]) {
+          final type = _attr(note, 'type');
+          if (type != null && type != 'normal') continue; // 구분선 등
+          final id = _attr(note, 'id');
+          if (id == null) continue;
+          final lines = <String>[];
+          for (final np in note.findAllElements('p', namespace: _w)) {
+            final b = StringBuffer();
+            for (final n in np.descendants.whereType<XmlElement>()) {
+              if (n.name.namespaceUri != _w) continue;
+              if (n.name.local == 't') b.write(n.innerText);
+              if (n.name.local == 'tab') b.write(' ');
+            }
+            lines.add(b.toString());
+          }
+          notes['${kind == 'footnote' ? 'f' : 'e'}:$id'] = lines.join('\n').trim();
+        }
+      }
+      var footnoteNumber = 0, endnoteNumber = 0;
+      String roman(int n) {
+        const vals = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
+        const syms = ['m', 'cm', 'd', 'cd', 'c', 'xc', 'l', 'xl', 'x', 'ix', 'v', 'iv', 'i'];
+        final out = StringBuffer();
+        for (int i = 0; i < vals.length; i++) {
+          while (n >= vals[i]) {
+            out.write(syms[i]);
+            n -= vals[i];
+          }
+        }
+        return out.toString();
+      }
       final body = doc.findAllElements('body', namespace: _w).first;
       final paragraphs = <Map<String, Object>>[];
       final indices = <XmlElement, int>{};
@@ -254,6 +352,8 @@ class DocxLayoutHints {
         final cached = <int>[];
         final drawingBreaks = <Map<String, Object>>[];
         final drawings = <Map<String, Object>>[];
+        final noteRefs = <Map<String, Object>>[];
+        final shapes = <Map<String, Object>>[];
         var drawingCount = 0;
         bool? pendingDrawingBreak;
         for (final run in p.findAllElements('r', namespace: _w)) {
@@ -268,6 +368,12 @@ class DocxLayoutHints {
             continue;
           final start = text.length;
           for (final n in run.children.whereType<XmlElement>()) {
+            // 사진 위에 그린 네모·동그라미 같은 도형 (Word는 mc:AlternateContent 안에 넣는다)
+            if (n.name.local == 'AlternateContent') {
+              final shape = _shape(n);
+              if (shape != null) shapes.add(shape);
+              continue;
+            }
             if (n.name.namespaceUri != _w) continue;
             switch (n.name.local) {
               case 't':
@@ -280,6 +386,19 @@ class DocxLayoutHints {
                 if (_attr(n, 'type') == 'page') {
                   breaks.add(text.length);
                   pendingDrawingBreak = false;
+                }
+              case 'footnoteReference':
+              case 'endnoteReference':
+                // 각주 번호 위치: 탭·줄바꿈을 뺀 글자 수 기준 (화면 쪽 문단 맞추기와 같은 기준)
+                final bool foot = n.name.local == 'footnoteReference';
+                final id = _attr(n, 'id');
+                if (id != null && _attr(n, 'customMarkFollows') != '1') {
+                  final key = '${foot ? 'f' : 'e'}:$id';
+                  noteRefs.add({
+                    'offset': text.toString().replaceAll(RegExp(r'[\t\r\n\u200b]'), '').length,
+                    'key': key,
+                    'label': foot ? '${++footnoteNumber}' : roman(++endnoteNumber),
+                  });
                 }
               case 'lastRenderedPageBreak':
                 cached.add(text.length);
@@ -312,6 +431,32 @@ class DocxLayoutHints {
               ),
             });
         }
+        // 수식(OMML): 글 몇 번째 글자 앞에 있는지 + 화면에 그릴 MathML
+        final maths = <Map<String, Object>>[];
+        var mathCount = 0;
+        void walkMath(XmlElement e) {
+          for (final c in e.children.whereType<XmlElement>()) {
+            final ns = c.name.namespaceUri, local = c.name.local;
+            if (ns == _m && local == 'oMathPara') {
+              for (final om in c.findElements('oMath', namespace: _m)) {
+                maths.add({'offset': mathCount, 'mathml': _mathml(om, block: true)});
+              }
+              continue;
+            }
+            if (ns == _m && local == 'oMath') {
+              maths.add({'offset': mathCount, 'mathml': _mathml(c)});
+              continue;
+            }
+            if (ns == _w && (local == 'p' || local == 'delText')) continue; // 글상자 안 문단, 지운 글
+            if (local == 'AlternateContent') continue;
+            if (ns == _w && local == 't') {
+              mathCount += c.innerText.replaceAll(RegExp(r'[\t\r\n\u200b]'), '').length;
+              continue;
+            }
+            walkMath(c);
+          }
+        }
+        if (p.findAllElements('oMath', namespace: _m).isNotEmpty) walkMath(p);
         paragraphs.add({
           'index': index,
           'text': text.toString(),
@@ -324,6 +469,9 @@ class DocxLayoutHints {
           'drawingCount': drawingCount,
           'drawings': drawings,
           'drawingBreaks': drawingBreaks,
+          if (shapes.isNotEmpty) 'shapes': shapes,
+          if (maths.isNotEmpty) 'math': maths,
+          if (noteRefs.isNotEmpty) 'notes': noteRefs,
         });
       }
       final tables = <Map<String, Object>>[];
@@ -378,6 +526,7 @@ class DocxLayoutHints {
       return {
         'version': 1,
         'paragraphs': paragraphs,
+        if (notes.isNotEmpty) 'notes': notes,
         'tables': tables,
         'sections': sections,
         'theme': themeFonts,
@@ -397,6 +546,132 @@ class DocxLayoutHints {
       return {};
     } finally {
       input?.closeSync();
+    }
+  }
+
+  // ── 수식: Word 수식(OMML) → 브라우저가 그리는 MathML ──
+  static String _esc(String t) => t.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+
+  static String? _mval(XmlElement? e, String child) {
+    final c = e?.findElements(child, namespace: _m).firstOrNull;
+    return c?.getAttribute('val', namespace: _m) ?? c?.getAttribute('m:val');
+  }
+
+  static String _mathml(XmlElement oMath, {bool block = false}) =>
+      '<math xmlns="http://www.w3.org/1998/Math/MathML"${block ? ' display="block"' : ''}><mrow>${_mChildren(oMath)}</mrow></math>';
+
+  static String _mChildren(XmlElement? e) {
+    if (e == null) return '';
+    final out = StringBuffer();
+    for (final c in e.children.whereType<XmlElement>()) {
+      out.write(_mNode(c));
+    }
+    return out.toString();
+  }
+
+  static String _mArg(XmlElement e, String name) => '<mrow>${_mChildren(e.findElements(name, namespace: _m).firstOrNull)}</mrow>';
+
+  static String _mText(String text, {bool plain = false}) {
+    final out = StringBuffer();
+    // 숫자 / 연산 기호 / 한글·낱말 / 그 밖의 글자(변수) 로 나눠 담음
+    for (final m in RegExp(r'\d+(?:\.\d+)?|[+\-−=×÷±<>≤≥≠≈∙·*/(),\[\]{}|%!:;∑∫∏√∞→←↔]|[가-힣ㄱ-ㅎㅏ-ㅣ]+(?:\s+[가-힣ㄱ-ㅎㅏ-ㅣ]+)*|[A-Za-z]{2,}|\s+|.').allMatches(text)) {
+      final t = m.group(0)!;
+      if (t.trim().isEmpty) {
+        out.write('<mspace width="0.25em"/>');
+      } else if (RegExp(r'^\d').hasMatch(t)) {
+        out.write('<mn>${_esc(t)}</mn>');
+      } else if (RegExp(r'^[+\-−=×÷±<>≤≥≠≈∙·*/(),\[\]{}|%!:;∑∫∏√∞→←↔]$').hasMatch(t)) {
+        out.write('<mo>${_esc(t == '-' ? '−' : t)}</mo>');
+      } else if (plain || RegExp(r'[가-힣]').hasMatch(t) || t.length > 1) {
+        out.write('<mtext>${_esc(t)}</mtext>');
+      } else {
+        out.write('<mi>${_esc(t)}</mi>');
+      }
+    }
+    return out.toString();
+  }
+
+  static String _mNode(XmlElement e) {
+    if (e.name.namespaceUri != _m) return '';
+    switch (e.name.local) {
+      case 'r':
+        final text = e.findElements('t', namespace: _m).map((t) => t.innerText).join();
+        final plain = e.findAllElements('nor', namespace: _m).isNotEmpty;
+        return _mText(text, plain: plain);
+      case 'f':
+        final type = _mval(e.findElements('fPr', namespace: _m).firstOrNull, 'type');
+        if (type == 'lin') return '<mrow>${_mArg(e, 'num')}<mo>/</mo>${_mArg(e, 'den')}</mrow>';
+        return '<mfrac${type == 'noBar' ? ' linethickness="0"' : ''}>${_mArg(e, 'num')}${_mArg(e, 'den')}</mfrac>';
+      case 'd':
+        final pr = e.findElements('dPr', namespace: _m).firstOrNull;
+        final beg = _mval(pr, 'begChr') ?? '(', end = _mval(pr, 'endChr') ?? ')', sep = _mval(pr, 'sepChr') ?? '|';
+        final parts = e.findElements('e', namespace: _m).map((x) => '<mrow>${_mChildren(x)}</mrow>').join('<mo>${_esc(sep)}</mo>');
+        return '<mrow>${beg.isEmpty ? '' : '<mo>${_esc(beg)}</mo>'}$parts${end.isEmpty ? '' : '<mo>${_esc(end)}</mo>'}</mrow>';
+      case 'sSup':
+        return '<msup>${_mArg(e, 'e')}${_mArg(e, 'sup')}</msup>';
+      case 'sSub':
+        return '<msub>${_mArg(e, 'e')}${_mArg(e, 'sub')}</msub>';
+      case 'sSubSup':
+        return '<msubsup>${_mArg(e, 'e')}${_mArg(e, 'sub')}${_mArg(e, 'sup')}</msubsup>';
+      case 'sPre':
+        return '<mrow><msubsup><mrow></mrow>${_mArg(e, 'sub')}${_mArg(e, 'sup')}</msubsup>${_mArg(e, 'e')}</mrow>';
+      case 'rad':
+        final hide = _mval(e.findElements('radPr', namespace: _m).firstOrNull, 'degHide');
+        final deg = e.findElements('deg', namespace: _m).firstOrNull;
+        if (hide == '1' || hide == 'on' || deg == null || _mChildren(deg).isEmpty) return '<msqrt>${_mChildren(e.findElements('e', namespace: _m).firstOrNull)}</msqrt>';
+        return '<mroot>${_mArg(e, 'e')}${_mArg(e, 'deg')}</mroot>';
+      case 'nary':
+        final pr = e.findElements('naryPr', namespace: _m).firstOrNull;
+        final chr = _mval(pr, 'chr') ?? '∫';
+        final sub = _mChildren(e.findElements('sub', namespace: _m).firstOrNull), sup = _mChildren(e.findElements('sup', namespace: _m).firstOrNull);
+        final big = '<mo largeop="true">${_esc(chr)}</mo>';
+        final op = sub.isEmpty && sup.isEmpty
+            ? big
+            : chr == '∫' || chr == '∬' || chr == '∭' || chr == '∮'
+                ? '<msubsup>$big<mrow>$sub</mrow><mrow>$sup</mrow></msubsup>'
+                : '<munderover>$big<mrow>$sub</mrow><mrow>$sup</mrow></munderover>';
+        return '<mrow>$op${_mArg(e, 'e')}</mrow>';
+      case 'func':
+        return '<mrow>${_mArg(e, 'fName')}<mo>&#x2061;</mo>${_mArg(e, 'e')}</mrow>';
+      case 'acc':
+        final chr = _mval(e.findElements('accPr', namespace: _m).firstOrNull, 'chr') ?? '̂';
+        return '<mover accent="true">${_mArg(e, 'e')}<mo>${_esc(chr)}</mo></mover>';
+      case 'bar':
+        final pos = _mval(e.findElements('barPr', namespace: _m).firstOrNull, 'pos');
+        return pos == 'top' ? '<mover>${_mArg(e, 'e')}<mo>‾</mo></mover>' : '<munder>${_mArg(e, 'e')}<mo>_</mo></munder>';
+      case 'groupChr':
+        final pr = e.findElements('groupChrPr', namespace: _m).firstOrNull;
+        final chr = _mval(pr, 'chr') ?? '⏟', pos = _mval(pr, 'pos') ?? 'bot';
+        return pos == 'top' ? '<mover>${_mArg(e, 'e')}<mo>${_esc(chr)}</mo></mover>' : '<munder>${_mArg(e, 'e')}<mo>${_esc(chr)}</mo></munder>';
+      case 'limLow':
+        return '<munder>${_mArg(e, 'e')}${_mArg(e, 'lim')}</munder>';
+      case 'limUpp':
+        return '<mover>${_mArg(e, 'e')}${_mArg(e, 'lim')}</mover>';
+      case 'm':
+        final rows = e.findElements('mr', namespace: _m)
+            .map((r) => '<mtr>${r.findElements('e', namespace: _m).map((c) => '<mtd>${_mChildren(c)}</mtd>').join()}</mtr>')
+            .join();
+        return '<mtable>$rows</mtable>';
+      case 'eqArr':
+        return '<mtable>${e.findElements('e', namespace: _m).map((c) => '<mtr><mtd>${_mChildren(c)}</mtd></mtr>').join()}</mtable>';
+      case 'oMath':
+        return '<mrow>${_mChildren(e)}</mrow>';
+      case 'e':
+      case 'num':
+      case 'den':
+      case 'sub':
+      case 'sup':
+      case 'deg':
+      case 'lim':
+      case 'fName':
+      case 'box':
+      case 'borderBox':
+      case 'phant':
+        return '<mrow>${_mChildren(e)}</mrow>';
+      default:
+        // 속성(…Pr), 제어 정보는 그리지 않음
+        if (e.name.local.endsWith('Pr')) return '';
+        return _mChildren(e);
     }
   }
 }

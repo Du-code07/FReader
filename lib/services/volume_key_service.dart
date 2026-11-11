@@ -59,6 +59,13 @@ class VolumeKeyService {
     }
   }
 
+  /// 흔들어서 화면 잠금 해제용 가속도 센서 켜기/끄기 (잠금 중에만 켜서 배터리 절약)
+  static Future<void> setShakeListening(bool enabled) async {
+    try {
+      await _methodChannel.invokeMethod('setShakeListening', {'enabled': enabled});
+    } catch (_) {}
+  }
+
   Future<void> stopListening() async {
     await _subscription?.cancel();
     _subscription = null;

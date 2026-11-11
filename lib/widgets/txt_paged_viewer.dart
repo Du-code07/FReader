@@ -14,6 +14,11 @@ class TxtPageController {
       _invoke?.call('display', position);
   Future<void> toProgress(double progress) async =>
       _invoke?.call('progress', progress);
+
+  String Function()? _visible;
+
+  /// 지금 화면에 보이는 쪽의 글 (글자 복사용)
+  String get visibleText => _visible?.call() ?? '';
 }
 
 /// Keeps the existing ReaderScreen toolbar, gestures, bookmarks and memos.
@@ -59,6 +64,7 @@ class _TxtPagedViewerState extends State<TxtPagedViewer> {
   void initState() {
     super.initState();
     widget.controller._invoke = _navigate;
+    widget.controller._visible = () => _visibleText.join('\n\n');
     unawaited(_load());
   }
 
