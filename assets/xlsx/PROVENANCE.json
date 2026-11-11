@@ -283,15 +283,15 @@
       }
     }
   },
-  "integrationRevision": 87,
+  "integrationRevision": 89,
   "integrationArtifacts": {
     "index.html": {
       "bytes": 666,
       "sha256": "553bd9f6128b2f1215fbe7d14d2bff17a4837a1067722fbb7dd5d334576a1c08"
     },
     "reader.js": {
-      "bytes": 15020,
-      "sha256": "3c9a5a9aa2ace843065892be832c18ca1bf21501369b2c1f8cb1bfb4ed3fd5cf"
+      "bytes": 16751,
+      "sha256": "d0045ef5f2903d758a57b96a9bc1d2c7b403309c1e2c8fbdb16277440c1a09f0"
     },
     "reader.css": {
       "bytes": 790,
@@ -306,5 +306,5 @@
       "sha256": "65d6927a5f2e89b988972b73cf9470cab9998943d69120a8497f16ad80934e54"
     }
   },
-  "integrationNotes": "Restored onto v86 without replacing its existing reader UI or other engines. All workbook sheets use the existing contents drawer. Viewport-only rendering, whole-column merge interval index, mobile scroll-ancestor touch handling, and existing Find bar integration."
+  "integrationNotes": "v89 keeps other document viewers unchanged. Excel uses fixed, horizontally scrollable top sheet tabs, direct WebView touch ownership without document-page gesture/annotation layers, and zoom buttons. Android disableHorizontalScroll/disableVerticalScroll are false for spreadsheets so ACTION_MOVE reaches the canvas. Per-sheet viewport/zoom is remembered during the session. Viewport-only rendering, whole-column merge interval index, offline image rendering and cross-sheet Find remain enabled."
 }

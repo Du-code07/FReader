@@ -20,6 +20,11 @@ class HwpReaderController {
   Future<void> toProgress(double progress) async =>
       _invoke?.call('progress', [progress]);
 
+  /// Excel navigation operates on the live worksheet, not document pages.
+  Future<void> selectSheet(int index) async => _invoke?.call('selectSheet', [index]);
+  Future<void> zoomSheet(double factor) async => _invoke?.call('zoomBy', [factor]);
+  Future<void> resetSheetZoom() async => _invoke?.call('resetZoom', []);
+
   // ── 파일 내 단어 검색 ──
   Future<Object?> Function(String, List<Object?>)? _query;
 
@@ -422,6 +427,7 @@ class _HwpViewerState extends State<HwpViewer> {
     _generation++;
     _timeout?.cancel();
     widget.controller._invoke = null;
+    widget.controller._query = null;
     unawaited(_closeFile());
     // The platform view owns its controller and releases the WASM heap on close.
     _web = null;
@@ -443,8 +449,11 @@ class _HwpViewerState extends State<HwpViewer> {
             javaScriptEnabled: true,
             transparentBackground: true,
             supportZoom: false,
-            disableHorizontalScroll: true,
-            disableVerticalScroll: true,
+            // Android consumes ACTION_MOVE when both flags are true. That
+            // prevents the canvas from receiving either drag or pinch events.
+            // Excel controls its own viewport; CSS prevents page scrolling.
+            disableHorizontalScroll: !_isSpreadsheet,
+            disableVerticalScroll: !_isSpreadsheet,
             horizontalScrollBarEnabled: false,
             verticalScrollBarEnabled: false,
             allowFileAccess: false,

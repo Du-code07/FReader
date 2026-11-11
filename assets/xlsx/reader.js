@@ -1,4 +1,4 @@
-// Read-only local Excel sheets. The existing Flutter toolbar owns navigation.
+// Read-only local Excel sheets. Flutter owns the fixed top tabs and zoom buttons.
 import { XlsxSheetViewer } from './engine/xlsx.js';
 import { legacyXls } from './legacy/xls.js';
 import { math } from './engine/math.js';
@@ -13,7 +13,8 @@ let incoming, received = 0, viewer, generation = 0, disposed = false;
 let loaded = false, opening = false, awaitingPassword = false;
 let events = [], flushing = false, navigation = Promise.resolve(), fontPromise;
 let locationTimer, resizeTimer, frameRequest = 0, desiredView, applyingView = false;
-let gesture = null;
+let gesture = null, viewTask = Promise.resolve();
+const sheetViews = new Map();
 let searchMatches = [];
 const pointers = new Map();
 
@@ -43,7 +44,7 @@ function fail(error) { emit('error', { message: errorMessage(error) }); return f
 function wipe(bytes) { if (bytes?.byteLength) bytes.fill(0); }
 function closeViewer() {
   loaded = false; desiredView = null; gesture = null; pointers.clear();
-  searchMatches = [];
+  searchMatches = []; sheetViews.clear();
   clearTimeout(locationTimer); clearTimeout(resizeTimer); cancelAnimationFrame(frameRequest);
   viewer?.destroy(); viewer = null; host.replaceChildren();
 }
@@ -82,10 +83,16 @@ function savedPosition(position, progress = 0) {
     x: m ? Math.max(0, number(m[2], 0)) : 0, y: m ? Math.max(0, number(m[3], 0)) : 0,
     scale: m ? Math.max(.25, Math.min(4, number(m[4], 1))) : 1 };
 }
+function rememberSheet() {
+  if (loaded && viewer) sheetViews.set(viewer.sheetIndex, {
+    ...viewer.getViewportOffset(), scale: viewer.getScale(),
+  });
+}
 function reportLocation() {
   if (!loaded || !viewer) return;
   const { x, y } = viewer.getViewportOffset(), count = viewer.sheetCount, page = viewer.sheetIndex;
   const scale = Math.round(viewer.getScale() * 1000) / 1000;
+  rememberSheet();
   emit('location', { page, pageCount: count,
     position: `${options.format}:${page}:${Math.round(x)}:${Math.round(y)}:${scale}`,
     progress: count > 1 ? page / (count - 1) : 1 });
@@ -163,7 +170,17 @@ function enqueue(action) {
   const current = generation;
   navigation = navigation.catch(() => {}).then(async () => {
     if (!loaded || !viewer || disposed || current !== generation) return;
-    try { const result = await action(); if (current === generation) reportLocation(); return result; }
+    try {
+      // Finish the last drag before changing sheets or zoom. A delayed frame
+      // from the previous sheet must never move the newly selected one.
+      cancelAnimationFrame(frameRequest); pointers.clear(); gesture = null;
+      await applyDesiredView();
+      if (current !== generation || !viewer) return;
+      rememberSheet();
+      const result = await action();
+      if (current === generation) reportLocation();
+      return result;
+    }
     catch (error) { if (!disposed && current === generation) fail(error); }
   });
   return navigation;
@@ -171,12 +188,31 @@ function enqueue(action) {
 function display(position) {
   return enqueue(() => restorePosition(/^\d+$/.test(String(position)) ? `${options.format}:${position}` : position));
 }
-function turnSheet(delta) {
-  return enqueue(() => {
-    const target = clampSheet(viewer.sheetIndex + delta);
-    if (target !== viewer.sheetIndex) return restorePosition(`${options.format}:${target}`);
+async function activateSheet(index) {
+  const target = clampSheet(Number(index));
+  if (target === viewer.sheetIndex) return;
+  const at = sheetViews.get(target) || { x: 0, y: 0, scale: 1 };
+  await restorePosition(`${options.format}:${target}:${at.x}:${at.y}:${at.scale}`);
+}
+function selectSheet(index) { return enqueue(() => activateSheet(index)); }
+function turnSheet(delta) { return enqueue(() => activateSheet(viewer.sheetIndex + delta)); }
+async function setZoom(scale) {
+  const active = viewer, offset = active.getViewportOffset(), oldScale = active.getScale();
+  const center = { x: host.clientWidth / 2, y: host.clientHeight / 2 };
+  active.setScale(Math.max(.25, Math.min(4, scale)));
+  const ratio = active.getScale() / oldScale;
+  await active.setViewportOffset({
+    x: (offset.x + center.x) * ratio - center.x,
+    y: (offset.y + center.y) * ratio - center.y,
   });
 }
+function zoomBy(factor) {
+  return enqueue(() => {
+    const value = Number(factor);
+    if (Number.isFinite(value) && value > 0) return setZoom(viewer.getScale() * value);
+  });
+}
+function resetZoom() { return enqueue(() => setZoom(1)); }
 function next() { return turnSheet(1); }
 function previous() { return turnSheet(-1); }
 function progress(value) { return enqueue(() => restorePosition(null, Math.max(0, Math.min(1, Number(value) || 0)))); }
@@ -207,27 +243,31 @@ function clearSearch() {
   return enqueue(() => { searchMatches = []; viewer.clearFind(); });
 }
 
-// Native mobile panning and pinch zoom. A horizontal drag stays inside a sheet;
-// sheet changes use the existing toolbar, volume keys, and contents drawer.
+// Native mobile panning and pinch zoom. A drag stays inside a sheet;
+// sheet changes use fixed Flutter tabs outside the WebView's gesture area.
 function rebaseGesture() {
   if (!viewer || !pointers.size) { gesture = null; return; }
   const points = [...pointers.values()], a = points[0], b = points[1];
   gesture = { count: points.length, x: b ? (a.x + b.x) / 2 : a.x, y: b ? (a.y + b.y) / 2 : a.y,
     distance: b ? Math.hypot(a.x - b.x, a.y - b.y) : 0,
-    offset: viewer.getViewportOffset(), scale: viewer.getScale() };
+    offset: desiredView ? { x: Math.max(0, desiredView.x), y: Math.max(0, desiredView.y) } : viewer.getViewportOffset(),
+    scale: desiredView?.scale ?? viewer.getScale() };
 }
-async function applyDesiredView() {
-  if (applyingView) return;
+function applyDesiredView() {
+  if (applyingView) return viewTask;
   applyingView = true;
-  try {
-    while (desiredView && loaded && viewer && !disposed) {
-      const desired = desiredView; desiredView = null;
-      const active = viewer, current = generation;
-      active.setScale(desired.scale);
-      try { await active.setViewportOffset({ x: desired.x, y: desired.y }); }
-      catch (error) { if (!disposed && current === generation) fail(error); }
-    }
-  } finally { applyingView = false; }
+  viewTask = (async () => {
+    try {
+      while (desiredView && loaded && viewer && !disposed) {
+        const desired = desiredView; desiredView = null;
+        const active = viewer, current = generation;
+        active.setScale(desired.scale);
+        try { await active.setViewportOffset({ x: desired.x, y: desired.y }); }
+        catch (error) { if (!disposed && current === generation) fail(error); }
+      }
+    } finally { applyingView = false; }
+  })();
+  return viewTask;
 }
 host.addEventListener('pointerdown', event => {
   if (event.pointerType === 'mouse' || !loaded) return;
@@ -270,7 +310,7 @@ function destroy() {
   closeViewer(); wipe(incoming); incoming = null; received = 0; events = [];
 }
 window.freaderXlsx = { beginDocument, appendChunk, openDocument, configure, display, next, previous, progress, highlightSelection, destroy,
-  search, showSearchResult, clearSearch,
+  search, showSearchResult, clearSearch, selectSheet, zoomBy, resetZoom,
   getState: () => ({ ready: !disposed, loaded, page: viewer?.sheetIndex || 0, count: viewer?.sheetCount || 0,
     sheets: viewer?.sheetNames || [], viewport: viewer?.getViewportOffset() || { x: 0, y: 0 }, scale: viewer?.getScale() || 1,
     received, awaitingPassword, format: options.format, maxBytes: MAX_BYTES }) };

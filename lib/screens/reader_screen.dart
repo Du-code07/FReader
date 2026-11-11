@@ -19,6 +19,7 @@ import '../widgets/text_copy_sheet.dart';
 import '../services/page_snapshot_service.dart';
 import '../services/epub_validation.dart';
 import '../widgets/hwp_viewer.dart';
+import '../widgets/spreadsheet_tab_bar.dart';
 import '../widgets/txt_paged_viewer.dart';
 import '../services/volume_key_service.dart';
 import '../widgets/quick_arc_menu.dart';
@@ -831,7 +832,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     setState(() {
       _chapterLevels = const [];
       _docPageCount = pageCount;
-      _chapters = _pageListChapters(pageCount);
+      _chapters = _isSpreadsheet ? const [] : _pageListChapters(pageCount);
     });
     if (_isTxt || _isSpreadsheet) return;
     final cached = _cachedOutlines?[pageCount];
@@ -842,6 +843,8 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     if (cached != null) return; // 목차 없음으로 저장된 문서
     _loadDocumentOutline(pageCount);
   }
+
+  double _sheetZoom = 1;
 
   void _onSheetNames(List<String> names) {
     if (!mounted || !_isSpreadsheet) return;
@@ -866,6 +869,10 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     setState(() {
       _docPage = page;
       _docPageCount = pageCount;
+      if (_isSpreadsheet) {
+        final parts = position.split(':');
+        _sheetZoom = parts.length == 5 ? double.tryParse(parts.last) ?? 1 : 1;
+      }
       _currentCfi = position;
       _currentPageLocationKey = position;
       _progress = progress.clamp(0.0, 1.0).toDouble();
@@ -876,6 +883,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     await StorageService.saveLastPosition(widget.filePath, position);
     await StorageService.saveProgress(widget.filePath, progress);
     await StorageService.savePageLabel(widget.filePath, _progressPageLabel());
+    if (_isSpreadsheet) return; // No page-anchored drawing layer over the live grid.
     final strokes = await StorageService.getEpubLocationStrokes(widget.filePath, position);
     if (mounted && relocation == _docRelocation) setState(() => _epubStrokes = strokes);
   }
@@ -891,7 +899,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
           initialPosition: _currentCfi ?? _initialCfi,
           initialProgress: _initialProgress,
           theme: _epubBgTheme,
-          spread: isLandscape && _enableTwoPageInLandscape && !_slideShow,
+          spread: !_isSpreadsheet && isLandscape && _enableTwoPageInLandscape && !_slideShow,
           rtl: _isMangaRtlMode,
           onLoaded: _onDocumentLoaded,
           onLocation: _onDocumentLocation,
@@ -910,7 +918,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
           initialPosition: _currentCfi ?? _initialCfi,
           initialProgress: _initialProgress,
           theme: _epubBgTheme,
-          spread: isLandscape && _enableTwoPageInLandscape && !_slideShow,
+          spread: !_isSpreadsheet && isLandscape && _enableTwoPageInLandscape && !_slideShow,
           rtl: _isMangaRtlMode,
           onLoaded: _onDocumentLoaded,
           onLocation: _onDocumentLocation,
@@ -3266,6 +3274,102 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     await showTextCopySheet(context, text: text, tr: _tr);
   }
 
+  /// Excel has a two-dimensional viewport. Do not wrap it in the book reader's
+  /// InteractiveViewer, page-swipe recognizers, tap zones or annotation layers.
+  Widget _buildSpreadsheetReader(bool isLandscape) {
+    return PopScope(
+      canPop: !_findOpen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _findOpen) _closeFind();
+      },
+      child: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: _getBgColor(),
+        body: SafeArea(
+          top: false,
+          child: Column(
+            key: _epubBodyKey,
+            children: [
+              if (_findOpen)
+                FindInFileBar(
+                  onSearch: _hwpController.search,
+                  onGoto: _hwpController.showSearchResult,
+                  onClose: _closeFind,
+                  tr: _tr,
+                )
+              else
+                Material(
+                  color: Colors.black87,
+                  child: SafeArea(
+                    bottom: false,
+                    child: SizedBox(
+                      height: 48,
+                      child: Row(children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                        Expanded(child: Text(widget.bookTitle,
+                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                            overflow: TextOverflow.ellipsis, maxLines: 1)),
+                        IconButton(
+                          icon: const Icon(Icons.search, color: Colors.white, size: 21),
+                          tooltip: _tr('파일 내 단어 검색', 'Find in File', '在文件中查找', 'ファイル内検索'),
+                          onPressed: _docPageCount > 0 ? () => setState(() => _findOpen = true) : null,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.tune, color: Colors.white, size: 20),
+                          tooltip: _tr('뷰어 표시 설정', 'Viewer Settings', '阅读器显示设置', 'ビューア表示設定'),
+                          onPressed: _showViewerSettingsSheet,
+                        ),
+                      ]),
+                    ),
+                  ),
+                ),
+              SpreadsheetTabBar(
+                names: [for (final chapter in _chapters) chapter.title],
+                selectedIndex: _docPage,
+                onSelected: (index) => _hwpController.selectSheet(index),
+              ),
+              Expanded(
+                child: AfterRouteTransition(
+                  builder: (_) => _buildDocumentViewer(isLandscape),
+                ),
+              ),
+              Material(
+                color: Theme.of(context).colorScheme.surface,
+                child: SizedBox(
+                  height: 44,
+                  child: Row(children: [
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(_tr('읽기 전용', 'Read only', '只读', '読み取り専用'),
+                        style: const TextStyle(fontSize: 12))),
+                    IconButton(
+                      icon: const Icon(Icons.remove, size: 20),
+                      tooltip: _tr('축소', 'Zoom out', '缩小', '縮小'),
+                      onPressed: _docPageCount > 0 && _sheetZoom > .25
+                          ? () => _hwpController.zoomSheet(1 / 1.25) : null,
+                    ),
+                    TextButton(
+                      onPressed: _docPageCount > 0 ? () => _hwpController.resetSheetZoom() : null,
+                      child: Text('${(_sheetZoom * 100).round()}%'),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add, size: 20),
+                      tooltip: _tr('확대', 'Zoom in', '放大', '拡大'),
+                      onPressed: _docPageCount > 0 && _sheetZoom < 4
+                          ? () => _hwpController.zoomSheet(1.25) : null,
+                    ),
+                  ]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     _syncShakeListening();
@@ -3277,6 +3381,7 @@ class _ReaderScreenState extends State<ReaderScreen> with WidgetsBindingObserver
     final screenSize = MediaQuery.sizeOf(context);
     final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
     final bool isLandscape = screenSize.width > screenSize.height;
+    if (_isSpreadsheet) return _buildSpreadsheetReader(isLandscape);
     final EpubSpread spreadSetting =
         (isLandscape && _enableTwoPageInLandscape) ? EpubSpread.always : EpubSpread.none;
 
