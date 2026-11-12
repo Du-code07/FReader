@@ -9,7 +9,11 @@ class SpreadsheetTabBar extends StatefulWidget {
     required this.names,
     required this.selectedIndex,
     required this.onSelected,
+    this.atBottom = false,
   });
+
+  /// 화면 아래에 둘 때: 고른 시트 표시 줄을 위쪽에 (엑셀 앱처럼)
+  final bool atBottom;
 
   final List<String> names;
   final int selectedIndex;
@@ -48,49 +52,54 @@ class _SpreadsheetTabBarState extends State<SpreadsheetTabBar> {
       _keys.add(GlobalKey());
     }
     final colors = Theme.of(context).colorScheme;
-    return Material(
-      color: colors.surface,
-      child: SizedBox(
-        height: 48,
-        child: LayoutBuilder(builder: (context, constraints) {
-          if (_width != constraints.maxWidth) {
-            _width = constraints.maxWidth;
-            _revealSelected();
-          }
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              for (int i = 0; i < widget.names.length; i++)
-                Semantics(
-                  key: _keys[i],
+    // 앱의 그룹 칩과 같은 둥근 알약 모양 탭 (고른 시트는 채워서)
+    return SizedBox(
+      height: 52,
+      child: LayoutBuilder(builder: (context, constraints) {
+        if (_width != constraints.maxWidth) {
+          _width = constraints.maxWidth;
+          _revealSelected();
+        }
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(children: [
+            for (int i = 0; i < widget.names.length; i++)
+              Padding(
+                key: _keys[i],
+                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 9),
+                child: Semantics(
                   button: true,
                   selected: i == widget.selectedIndex,
-                  child: InkWell(
-                    onTap: () => widget.onSelected(i),
-                    child: Container(
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      constraints: const BoxConstraints(minWidth: 80),
-                      decoration: BoxDecoration(
-                        color: i == widget.selectedIndex ? Colors.amber.withValues(alpha: .16) : null,
-                        border: Border(
-                          right: BorderSide(color: colors.outlineVariant),
-                          bottom: BorderSide(
-                            color: i == widget.selectedIndex ? Colors.amber : colors.outlineVariant,
-                            width: i == widget.selectedIndex ? 3 : 1,
-                          ),
-                        ),
+                  child: Material(
+                    color: i == widget.selectedIndex ? colors.secondaryContainer : Colors.transparent,
+                    shape: StadiumBorder(
+                      side: BorderSide(color: i == widget.selectedIndex ? Colors.transparent : colors.outlineVariant),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => widget.onSelected(i),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.grid_on_rounded, size: 15,
+                              color: i == widget.selectedIndex ? colors.onSecondaryContainer : colors.onSurfaceVariant),
+                          const SizedBox(width: 6),
+                          Text(widget.names[i], maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: i == widget.selectedIndex ? colors.onSecondaryContainer : colors.onSurface,
+                                fontWeight: i == widget.selectedIndex ? FontWeight.w700 : FontWeight.w500,
+                              )),
+                        ]),
                       ),
-                      child: Text(widget.names[i], maxLines: 1,
-                          style: TextStyle(fontSize: 14,
-                              fontWeight: i == widget.selectedIndex ? FontWeight.w700 : FontWeight.w400)),
                     ),
                   ),
                 ),
-            ]),
-          );
-        }),
-      ),
+              ),
+          ]),
+        );
+      }),
     );
   }
 }

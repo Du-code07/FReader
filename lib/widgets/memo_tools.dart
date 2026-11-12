@@ -125,7 +125,7 @@ class MemoToolButton extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              iconBuilder != null ? iconBuilder!(color) : Icon(icon, color: color, size: 18),
+              iconBuilder != null ? iconBuilder!(color) : Icon(icon, color: color, size: 16),
               // 펜 색: 펜 몸통 왼쪽에 살짝 띄워서
               if (dotColor != null)
                 Positioned(
@@ -253,10 +253,10 @@ Future<String?> showEraserTypeMenu(BuildContext buttonContext, String current, M
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
-              Icon(icon, size: 20, color: Colors.white),
+              Icon(icon, size: 17, color: Colors.white),
               const SizedBox(width: 12),
               Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 15))),
-              if (current == value) const Icon(Icons.check, size: 18, color: Colors.amber),
+              if (current == value) const Icon(Icons.check, size: 16, color: Colors.amber),
             ],
           ),
         ),
@@ -427,7 +427,7 @@ class _PenSettingsPanelState extends State<_PenSettingsPanel> {
               // 머리줄: 제목 + 닫기
               Row(
                 children: [
-                  const Icon(Icons.edit, color: Colors.white, size: 22),
+                  const Icon(Icons.edit, color: Colors.white, size: 19),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -439,7 +439,7 @@ class _PenSettingsPanelState extends State<_PenSettingsPanel> {
                     color: Colors.white12,
                     shape: const CircleBorder(),
                     child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white, size: 22),
+                      icon: const Icon(Icons.close, color: Colors.white, size: 19),
                       tooltip: tr('닫기', 'Close', '关闭', '閉じる'),
                       onPressed: () => Navigator.pop(context),
                     ),

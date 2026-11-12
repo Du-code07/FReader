@@ -5,6 +5,10 @@ import 'dart:isolate';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
+import '../services/user_fonts.dart';
+import '../services/storage_service.dart';
+import 'viewer_dialogs.dart';
+import 'text_copy_sheet.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../services/docx_layout_hints.dart';
@@ -29,9 +33,17 @@ class HwpReaderController {
   Future<Object?> Function(String, List<Object?>)? _query;
 
   /// 찾은 곳 수 (못 찾거나 아직 열리지 않았으면 0)
+  /// 마지막으로 찾은 곳들이 있는 쪽 (스크롤 보기에서 그 쪽으로 옮길 때)
+  List<int> lastSearchPages = const [];
+
   Future<int> search(String text) async {
     final result = await _query?.call('search', [text]);
-    if (result is Map) return (result['count'] as num?)?.toInt() ?? 0;
+    if (result is Map) {
+      final pages = result['pages'];
+      lastSearchPages = pages is List ? [for (final p in pages) (p as num?)?.toInt() ?? 0] : const [];
+      return (result['count'] as num?)?.toInt() ?? 0;
+    }
+    lastSearchPages = const [];
     return 0;
   }
 
@@ -42,6 +54,15 @@ class HwpReaderController {
   Future<String?> slideImage(int index, {int width = 1800}) async {
     final result = await _query?.call('slideImage', [index, width]);
     return result is String && result.isNotEmpty ? result : null;
+  }
+
+  /// 지금 보이는 쪽이 화면에서 차지하는 자리 (0~1 비율). 모르면 null
+  Future<Rect?> pageRect() async {
+    final r = await _query?.call('pageRect', []);
+    if (r is! Map) return null;
+    double v(Object? x) => (x as num?)?.toDouble() ?? 0;
+    final rect = Rect.fromLTWH(v(r['x']), v(r['y']), v(r['w']), v(r['h']));
+    return rect.width > 0.05 && rect.height > 0.05 ? rect : null;
   }
 
   /// 지금 화면에 보이는 글과 위치 [{t, x, y, w, h}] (화면 크기 대비 0~1) — 내보낸 PDF의 글자 층용
@@ -156,6 +177,8 @@ class _HwpViewerState extends State<HwpViewer> {
       '$_origin/assets/flutter_assets/assets/${_isSpreadsheet ? 'xlsx' : _isPresentation ? 'ppt' : _isWord ? 'docx' : 'hwp'}/index.html';
   /// 표시 파일을 못 불러왔을 때: 앱 안에 그 파일이 아예 없으면(빌드에 빠짐) 무엇이 빠졌는지 알려 준다
   Future<void> _reportMissingAsset(String url, String description) async {
+    // 없어도 되는 글꼴(같은 폭 무료 글꼴·사용자 글꼴)은 못 불러와도 기본 글꼴로 계속 보여 줌
+    if (url.contains('/fonts/metric/') || url.contains('/fonts/free/') || url.contains('/userfonts/')) return;
     final marker = '$_origin/assets/flutter_assets/';
     if (url.startsWith(marker)) {
       final asset = Uri.decodeComponent(url.substring(marker.length).split('?').first);
@@ -196,7 +219,12 @@ class _HwpViewerState extends State<HwpViewer> {
     if (_isSpreadsheet) 'format': _spreadsheetFormat,
     if (_isDocx) 'docxLayout': _docxLayout,
     if (_cacheKey != null) 'cacheKey': _cacheKey,
+    if (_userFonts.isNotEmpty) 'userFonts': _userFonts,
   };
+  /// 사용자가 넣은 글꼴 (같은 이름의 글꼴 대신 씀)
+  List<Map<String, Object>> _userFonts = const [];
+  /// 처음 열 때 파일을 넘기는 진행률 (0~1)
+  final ValueNotifier<double?> _loadProgress = ValueNotifier<double?>(0);
   /// 파일이 바뀌면 달라지는 열쇠 (변환된 그림 저장소 이름에 사용)
   String? _cacheKey;
 
@@ -288,6 +316,9 @@ class _HwpViewerState extends State<HwpViewer> {
         final path = widget.filePath;
         _docxLayout = await Isolate.run(() => DocxLayoutHints.readLayout(path));
       }
+      try {
+        _userFonts = await UserFonts.forViewer();
+      } catch (_) {}
       if (_disposed || !mounted) return;
       await _invoke('beginDocument', [length, _options]);
       if (_failed || _disposed) return;
@@ -307,6 +338,7 @@ class _HwpViewerState extends State<HwpViewer> {
           throw const FormatException('문서를 읽는 중 파일 크기가 변경되었습니다.');
         await _invoke('appendChunk', [offset, base64Encode(chunk)]);
         offset += chunk.length;
+        _loadProgress.value = 0.9 * offset / length;
         _armTimeout();
       }
       await _closeFile();
@@ -326,6 +358,14 @@ class _HwpViewerState extends State<HwpViewer> {
     switch (event['type']) {
       case 'ready':
         unawaited(_transferDocument());
+        break;
+      // 엑셀: 칸을 길게 눌러 고른 뒤 손을 떼면 그 글을 복사 창으로
+      case 'haptic':
+        HapticFeedback.selectionClick();
+        break;
+      case 'copyText':
+        final text = (event['text'] ?? '').toString();
+        if (text.trim().isNotEmpty) unawaited(showTextCopySheet(context, text: text, tr: _tr));
         break;
       case 'loaded':
         setState(() => _loaded = true);
@@ -434,6 +474,15 @@ class _HwpViewerState extends State<HwpViewer> {
     super.dispose();
   }
 
+  String _tr(String ko, String en, String zh, String ja) =>
+      AppI18n.t(StorageService.appLangNotifier.value, ko: ko, en: en, zh: zh, ja: ja);
+
+  Future<void> _clearSelection() async {
+    try {
+      await _web?.evaluateJavascript(source: 'try{window.getSelection().removeAllRanges()}catch(e){}');
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -441,9 +490,10 @@ class _HwpViewerState extends State<HwpViewer> {
       children: [
         InAppWebView(
           // Excel owns two-dimensional pan and pinch; the outer reader still owns its toolbar.
+          // 한글·워드: 글을 길게 누르면 문서 화면이 바로 받아 글을 고를 수 있게 (EPUB과 같은 방식)
           gestureRecognizers: _isSpreadsheet
               ? {Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer())}
-              : null,
+              : {Factory<LongPressGestureRecognizer>(() => LongPressGestureRecognizer(duration: const Duration(milliseconds: 350)))},
           initialUrlRequest: URLRequest(url: WebUri(_entry)),
           initialSettings: InAppWebViewSettings(
             javaScriptEnabled: true,
@@ -462,15 +512,37 @@ class _HwpViewerState extends State<HwpViewer> {
             javaScriptHandlersOriginAllowList: {_origin},
             useShouldOverrideUrlLoading: true,
             webViewAssetLoader: WebViewAssetLoader(
-              pathHandlers: [AssetsPathHandler(path: '/assets/')],
+              pathHandlers: [
+                AssetsPathHandler(path: '/assets/'),
+                if (UserFonts.cachedDirPath != null)
+                  InternalStoragePathHandler(path: UserFonts.urlPath, directory: UserFonts.cachedDirPath!),
+              ],
             ),
           ),
+          // 글을 길게 눌러 고르면 EPUB과 같은 메뉴: 형광펜 칠하기 / 글자 복사(복사 창). 누른 뒤 선택 표시는 지움
           contextMenu: ContextMenu(
+            settings: ContextMenuSettings(hideDefaultSystemContextMenuItems: true),
             menuItems: [
               ContextMenuItem(
                 id: 1,
-                title: '형광펜 칠하기',
-                action: () => _invoke('highlightSelection', []),
+                title: _tr('형광펜 칠하기', 'Highlight', '荧光笔', 'マーカー'),
+                action: () async {
+                  await _invoke('highlightSelection', []);
+                  await _clearSelection();
+                },
+              ),
+              ContextMenuItem(
+                id: 2,
+                title: _tr('글자 복사', 'Copy Text', '复制文字', '文字をコピー'),
+                action: () async {
+                  String text = '';
+                  try {
+                    final r = await _web?.evaluateJavascript(source: 'String(window.getSelection ? window.getSelection().toString() : "")');
+                    text = r is String ? r : '';
+                  } catch (_) {}
+                  await _clearSelection();
+                  if (mounted && text.trim().isNotEmpty) await showTextCopySheet(context, text: text, tr: _tr);
+                },
               ),
             ],
           ),
@@ -513,7 +585,12 @@ class _HwpViewerState extends State<HwpViewer> {
             _reportError('문서 표시 프로세스가 종료되었습니다. 문서를 다시 열어 주세요.');
           },
         ),
-        if (!_loaded) const Center(child: CircularProgressIndicator()),
+        // 처음 열 때: 돌아가는 원 + '파일 여는 중 n%' (파일을 넘기는 동안 진행률)
+        if (!_loaded)
+          ValueListenableBuilder<double?>(
+            valueListenable: _loadProgress,
+            builder: (context, p, _) => FileLoadingView(label: AppI18n.t(StorageService.appLangNotifier.value, ko: '파일 여는 중', en: 'Opening file', zh: '正在打开文件', ja: 'ファイルを開いています'), progress: p, background: widget.theme == 'dark' ? const Color(0xFF1E1E1E) : Colors.white),
+          ),
       ],
     );
   }

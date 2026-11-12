@@ -270,7 +270,7 @@ class _MyEbookAppState extends State<MyEbookApp> with SingleTickerProviderStateM
             )
           : BookshelfScreen(
               isDarkMode: _isDarkMode,
-              appLang: _appLang,
+              appLang: widget.appLang,
               themeMode: _themeMode,
               onChangeThemeMode: _changeThemeMode,
               onChangeLanguage: _changeAppLanguage,

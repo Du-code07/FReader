@@ -49,6 +49,7 @@ class EpubViewer extends StatefulWidget {
     this.onTouchDown,
     this.onTouchUp,
     this.onFootnoteTapped,
+    this.onChapterEdge,
     this.onLoadError,
     this.initialLocations,
     this.onLocationsGenerated,
@@ -229,6 +230,9 @@ class EpubViewer extends StatefulWidget {
   /// `epub:type="noteref"` or `role="doc-noteref"`, or, for books without
   /// those semantics, when it is a superscript link to a fragment.
   final ValueChanged<EpubFootnote>? onFootnoteTapped;
+
+  /// FReader: 스크롤 보기에서 장의 처음/끝에 닿았는지 (atStart, atEnd, 첫 장인가, 마지막 장인가)
+  final void Function(bool atStart, bool atEnd, bool firstChapter, bool lastChapter)? onChapterEdge;
 
   /// Callback fired when the book cannot be opened, with an
   /// [EpubLoadException]: the source failed to load (missing file or asset,
@@ -527,6 +531,13 @@ class _EpubViewerState extends State<EpubViewer> {
         rect = null;
       }
       widget.onAnnotationClicked?.call(cfi, rect);
+    });
+
+    controller.addHandler("chapterEdge", (data) {
+      try {
+        final m = Utils.asStringMap(data[0]);
+        widget.onChapterEdge?.call(m['atStart'] == true, m['atEnd'] == true, m['first'] == true, m['last'] == true);
+      } catch (_) {}
     });
 
     controller.addHandler("footnoteTapped", (data) {

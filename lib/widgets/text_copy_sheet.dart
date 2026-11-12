@@ -31,7 +31,7 @@ Future<void> showTextCopySheet(
                     ),
                     if (cleaned.isNotEmpty)
                       FilledButton.tonalIcon(
-                        icon: const Icon(Icons.copy_all_outlined, size: 18),
+                        icon: const Icon(Icons.copy_all_outlined, size: 16),
                         label: Text(tr('전체 복사', 'Copy All', '全部复制', 'すべてコピー')),
                         onPressed: () async {
                           await Clipboard.setData(ClipboardData(text: cleaned));

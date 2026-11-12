@@ -89,7 +89,34 @@ class AppI18n {
 class StorageService {
   static final ValueNotifier<String> appLangNotifier = ValueNotifier<String>('ko');
   static final ValueNotifier<bool?> desiredLandscapeNotifier = ValueNotifier<bool?>(null);
+  // 페이지 기억하기 (기본 켜짐). 끄면 읽던 자리를 새로 저장하지 않고 처음부터 보여 주며,
+  // 다시 켜면 끄기 전에 저장해 둔 자리를 그대로 보여 준다
+  static bool rememberPage = true;
+
+  static Future<void> loadRememberPage() async {
+    final prefs = await SharedPreferences.getInstance();
+    rememberPage = prefs.getBool('remember_page_v89') ?? true;
+  }
+
+  static Future<void> setRememberPage(bool on) async {
+    rememberPage = on;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('remember_page_v89', on);
+  }
+
+  // 도구 모음 형태: 'arc'(반원, 기본) / 'bar'(아래 가로 바)
+  static Future<String> getToolbarStyle() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('toolbar_style_v89') == 'bar' ? 'bar' : 'arc';
+  }
+
+  static Future<void> setToolbarStyle(String style) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('toolbar_style_v89', style);
+  }
+
   static Future<void> saveLastPosition(String bookPath, String pos) async {
+    if (!rememberPage) return;
     final prefs = await SharedPreferences.getInstance();
     final oldPos = prefs.getString('pos_$bookPath');
     if (oldPos != null && oldPos != pos) {
@@ -99,6 +126,7 @@ class StorageService {
   }
 
   static Future<String?> getLastPosition(String bookPath) async {
+    if (!rememberPage) return null;
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('pos_$bookPath');
   }
@@ -141,7 +169,7 @@ class StorageService {
   }
 
   /// 앱 테마 설정값 → 지금 실제로 어두운 화면인지
-  static bool isDarkFor(String mode) => mode == 'dark' ||
+  static bool isDarkFor(String mode) => mode == 'dark' || mode == 'black' || mode == 'dim' ||
       (mode == 'system' && WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark);
 
 
@@ -220,6 +248,17 @@ class StorageService {
     return prefs.getBool('hide_thumbnails') ?? false;
   }
 
+  /// 표지형: 책갈피를 잡아당겨 북마크하는 움직임 끄기
+  static Future<void> setRibbonAnimationOff(bool off) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('ribbon_anim_off_v95', off);
+  }
+
+  static Future<bool> getRibbonAnimationOff() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('ribbon_anim_off_v95') ?? false;
+  }
+
   /// 사용자가 고른 표지 그림: 파일 경로 → 표지 그림 경로
   static Future<Map<String, String>> getCustomCovers() async {
     final prefs = await SharedPreferences.getInstance();
@@ -243,6 +282,41 @@ class StorageService {
   }
 
   /// 파일 목록에서 [그룹 이름] 숨기기
+  // 파일 목록: 추가 날짜 숨기기 / 페이지 수 숨기기
+  static Future<bool> getHideAddedDate() async => (await SharedPreferences.getInstance()).getBool('hide_added_date_v90') ?? false;
+  static Future<void> setHideAddedDate(bool v) async => (await SharedPreferences.getInstance()).setBool('hide_added_date_v90', v);
+  static Future<bool> getHidePageCount() async => (await SharedPreferences.getInstance()).getBool('hide_page_count_v90') ?? false;
+  static Future<void> setHidePageCount(bool v) async => (await SharedPreferences.getInstance()).setBool('hide_page_count_v90', v);
+
+  /// 파일을 앱에 추가한 날짜 (밀리초). 저장해 둔 것이 없으면 null
+  static Future<Map<String, int>> getAddedDates() async {
+    final raw = (await SharedPreferences.getInstance()).getString('added_dates_v90');
+    if (raw == null) return {};
+    try {
+      return (jsonDecode(raw) as Map).map((k, v) => MapEntry('$k', (v as num).toInt()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  static Future<void> setAddedDates(Map<String, int> m) async =>
+      (await SharedPreferences.getInstance()).setString('added_dates_v90', jsonEncode(m));
+
+  // 파일 정렬: 기준 'name' | 'date', 순서 asc(이름 오름차순·오래된 순) / desc, 정렬 기억하기
+  static Future<(String, bool, bool)> getLibrarySort() async {
+    final p = await SharedPreferences.getInstance();
+    final remember = p.getBool('lib_sort_remember_v90') ?? false;
+    if (!remember) return ('name', true, false);
+    return (p.getString('lib_sort_by_v90') ?? 'name', p.getBool('lib_sort_asc_v90') ?? true, true);
+  }
+
+  static Future<void> setLibrarySort(String by, bool asc, bool remember) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('lib_sort_remember_v90', remember);
+    await p.setString('lib_sort_by_v90', by);
+    await p.setBool('lib_sort_asc_v90', asc);
+  }
+
   static Future<void> setHideGroupName(bool hide) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('hide_group_name', hide);
@@ -331,6 +405,13 @@ class StorageService {
     await prefs.setBool('reading_dir_rtl_v26_$key', isRtl);
   }
 
+  /// 이 책에 읽기 방향을 직접 정한 적이 없으면 null
+  static Future<bool?> getBookReadingDirectionRtlOrNull(String bookPath) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _normalizeBookKey(bookPath);
+    return prefs.getBool('reading_dir_rtl_v26_$key');
+  }
+
   static Future<bool> getBookReadingDirectionRtl(String bookPath) async {
     final prefs = await SharedPreferences.getInstance();
     final key = _normalizeBookKey(bookPath);
@@ -353,8 +434,8 @@ class StorageService {
   }
 
   static Future<bool> getUseQuickNavTurn() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('use_quick_nav_turn') ?? false;
+    // '페이지 이동 버튼'은 없앰 (v90)
+    return false;
   }
 
   static Future<void> setUseSpenTurn(bool enabled) async {
@@ -362,14 +443,52 @@ class StorageService {
     await prefs.setBool('use_spen_turn', enabled);
   }
 
+  // 페이지 모드 (v88에서 새로 시작: 예전 페이지 전환 설정은 쓰지 않음)
+  // 탭(기본값 켜짐) / 스크롤 / 슬라이드(옆으로 밀기). 스크롤과 슬라이드는 함께 켤 수 없음
   static Future<void> setUseSwipeTurn(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('use_swipe_turn', enabled);
+    await prefs.setBool('page_mode_slide_v88', enabled);
+    if (enabled) await prefs.setBool('page_mode_scroll_v88', false);
   }
 
   static Future<bool> getUseSwipeTurn() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('use_swipe_turn') ?? true;
+    return prefs.getBool('page_mode_slide_v88') ?? false;
+  }
+
+  static Future<void> setPageModeTap(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('page_mode_tap_v88', enabled);
+  }
+
+  static Future<bool> getPageModeTap() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('page_mode_tap_v88') ?? true;
+  }
+
+  static Future<void> setPageModeScroll(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('page_mode_scroll_v88', enabled);
+    if (enabled) await prefs.setBool('page_mode_slide_v88', false);
+  }
+
+  static Future<bool> getPageModeScroll() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('page_mode_scroll_v88') ?? false;
+  }
+
+  /// 페이지 표시: 'one'(한 페이지) / 'two'(두 페이지) / 'auto'(화면이 넓으면 두 페이지)
+  /// 처음에는 예전 '가로 모드 2페이지 보기' 설정을 이어받음 (켜져 있었으면 자동)
+  static Future<String> getPageDisplay() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getString('page_display_v88');
+    if (v == 'one' || v == 'two' || v == 'auto') return v!;
+    return (prefs.getBool('two_page_landscape_v30') ?? false) ? 'auto' : 'one';
+  }
+
+  static Future<void> setPageDisplay(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('page_display_v88', mode);
   }
 
   // 위로 밀어서 다음 페이지 / 아래로 밀어서 이전 페이지 (기본값: 켜짐)
@@ -379,8 +498,8 @@ class StorageService {
   }
 
   static Future<bool> getUseSwipeUpTurn() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('use_swipe_up_turn') ?? false; // 위로 밀기는 기본값에서 뺌
+    // '위로 밀기'는 v88의 스크롤 모드로 바뀜 (더 쓰지 않음)
+    return false;
   }
 
   // 메모 지우개 종류: 'area'(닿은 부분만) / 'stroke'(닿은 획 전체)
@@ -407,7 +526,11 @@ class StorageService {
 
   static Future<String> getFooterInfoMode() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('footer_info_mode') ?? 'none';
+    // '진행률'·'진행률 및 페이지 번호'는 없앰 (v90): 예전 값은 가까운 것으로
+    final v = prefs.getString('footer_info_mode') ?? 'none';
+    if (v == 'both') return 'page';
+    if (v == 'progress') return 'none';
+    return v;
   }
 
   // 9. 진행바 UI 하단('bottom')을 기본값으로 설정

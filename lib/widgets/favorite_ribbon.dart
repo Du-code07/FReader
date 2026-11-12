@@ -20,11 +20,24 @@ class FavoriteRibbon extends StatefulWidget {
   /// 누르는 범위를 오른쪽·아래로 이만큼 더 넓힘 (책갈피 위치는 그대로)
   final double extraHitArea;
 
+  /// 앱 설정 '책갈피 애니메이션 끄기': 잡아당기는 움직임 없이 누르면 바로 켜고 끔
+  static final ValueNotifier<bool> animationOff = ValueNotifier<bool>(false);
+
   @override
   State<FavoriteRibbon> createState() => _FavoriteRibbonState();
 }
 
 class _FavoriteRibbonState extends State<FavoriteRibbon> with SingleTickerProviderStateMixin {
+  @override
+  void initState() {
+    super.initState();
+    FavoriteRibbon.animationOff.addListener(_onAnimSetting);
+  }
+
+  void _onAnimSetting() {
+    if (mounted) setState(() {});
+  }
+
   /// 잡아당겨 늘어난 길이 (손을 떼면 0으로 돌아감)
   late final AnimationController _pull = AnimationController(vsync: this, lowerBound: 0, upperBound: double.infinity, value: 0);
   bool _armed = false; // 충분히 당겨서 손을 떼면 켜고/끄는 상태
@@ -36,6 +49,7 @@ class _FavoriteRibbonState extends State<FavoriteRibbon> with SingleTickerProvid
 
   @override
   void dispose() {
+    FavoriteRibbon.animationOff.removeListener(_onAnimSetting);
     _pull.dispose();
     super.dispose();
   }
@@ -62,12 +76,13 @@ class _FavoriteRibbonState extends State<FavoriteRibbon> with SingleTickerProvid
   Widget build(BuildContext context) {
     final Color outline = widget.onImage ? Colors.white : (widget.isDark ? Colors.white60 : Colors.black45);
     final Color emptyFill = widget.onImage ? Colors.black26 : Colors.transparent;
+    final bool still = FavoriteRibbon.animationOff.value;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
-      onVerticalDragUpdate: _onDragUpdate,
-      onVerticalDragEnd: _onDragEnd,
-      onVerticalDragCancel: _onDragEnd,
+      onVerticalDragUpdate: still ? null : _onDragUpdate,
+      onVerticalDragEnd: still ? null : _onDragEnd,
+      onVerticalDragCancel: still ? null : _onDragEnd,
       // 위로 올라간 부분만 잘라서 파일 칸 위로 튀어나오지 않게 함 (아래로 늘어나는 부분은 보이게)
       // (Stack의 clip은 Transform으로 옮긴 그림을 자르지 못함)
       child: ClipRect(
@@ -81,7 +96,7 @@ class _FavoriteRibbonState extends State<FavoriteRibbon> with SingleTickerProvid
               alignment: Alignment.topLeft,
               child: TweenAnimationBuilder<double>(
                 tween: Tween<double>(end: widget.active ? 1.0 : 0.0),
-                duration: const Duration(milliseconds: 280),
+                duration: still ? Duration.zero : const Duration(milliseconds: 280),
                 curve: Curves.easeOutBack,
                 builder: (context, t, _) {
                   final double c = t.clamp(0.0, 1.0).toDouble();

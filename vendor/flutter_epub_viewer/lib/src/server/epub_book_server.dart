@@ -52,6 +52,9 @@ class EpubBookServer {
   /// Android AssetLoader origin, shared by the reader assets and book chapters.
   static const interceptHost = 'appassets.androidplatform.net';
 
+  /// FReader: 사용자가 넣은 글꼴 폴더 (https://appassets.androidplatform.net/userfonts/파일)
+  static String? userFontDir;
+
   /// Whether book URLs are served by interception rather than HTTP.
   static bool get usesInterception =>
       debugUseInterception ?? (!kIsWeb && Platform.isAndroid);
@@ -115,6 +118,21 @@ class EpubBookServer {
   /// Answers an intercepted WebView request, or returns null when [url] is
   /// not a book URL (the WebView then loads it normally).
   Future<InterceptedResponse?> intercept(Uri url) async {
+    // FReader: 사용자가 넣은 글꼴 (EPUB 글꼴). 폴더 안 파일 이름만 받음
+    final fontDir = userFontDir;
+    if (fontDir != null && url.scheme == 'https' && url.host == interceptHost && url.path.startsWith('/userfonts/')) {
+      final name = url.pathSegments.isNotEmpty ? url.pathSegments.last : '';
+      if (!RegExp(r'^[A-Za-z0-9_.-]+$').hasMatch(name) || name.contains('..')) {
+        return InterceptedResponse(404, 'text/plain', Uint8List(0));
+      }
+      try {
+        final bytes = await File('$fontDir/$name').readAsBytes();
+        final type = name.endsWith('.otf') ? 'font/otf' : 'font/ttf';
+        return InterceptedResponse(200, type, bytes);
+      } catch (_) {
+        return InterceptedResponse(404, 'text/plain', Uint8List(0));
+      }
+    }
     if (url.scheme != 'https' ||
         url.host != interceptHost ||
         !url.path.startsWith('/books/'))

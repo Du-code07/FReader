@@ -14,3 +14,5 @@ export 'src/models/epub_context_menu.dart';
 export 'src/models/epub_footnote.dart';
 export 'src/models/epub_load_exception.dart';
 export 'src/epub_metadata.dart';
+// FReader: 사용자 글꼴 폴더 지정용
+export 'src/server/epub_book_server.dart' show EpubBookServer;

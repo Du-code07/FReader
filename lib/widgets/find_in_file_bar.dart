@@ -92,7 +92,7 @@ class _FindInFileBarState extends State<FindInFileBar> {
             children: [
               IconButton(
                 visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                icon: const Icon(Icons.close, color: Colors.white, size: 17),
                 tooltip: widget.tr('검색 닫기', 'Close Search', '关闭搜索', '検索を閉じる'),
                 onPressed: widget.onClose,
               ),
@@ -112,7 +112,7 @@ class _FindInFileBarState extends State<FindInFileBar> {
                     border: InputBorder.none,
                     hintText: widget.tr('파일 내 단어 검색', 'Find in file', '在文件中查找', 'ファイル内検索'),
                     hintStyle: const TextStyle(color: Colors.white54, fontSize: 15),
-                    prefixIcon: const Icon(Icons.search, color: Colors.white70, size: 20),
+                    prefixIcon: const Icon(Icons.search, color: Colors.white70, size: 17),
                     prefixIconConstraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   ),
                 ),
@@ -129,13 +129,13 @@ class _FindInFileBarState extends State<FindInFileBar> {
                 ),
               IconButton(
                 visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.keyboard_arrow_up, color: Colors.white, size: 22),
+                icon: const Icon(Icons.keyboard_arrow_up, color: Colors.white, size: 19),
                 tooltip: widget.tr('이전 결과', 'Previous', '上一个', '前へ'),
                 onPressed: _count > 0 ? () => _step(-1) : null,
               ),
               IconButton(
                 visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 22),
+                icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 19),
                 tooltip: widget.tr('다음 결과', 'Next', '下一个', '次へ'),
                 onPressed: _count > 0 ? () => _step(1) : _run,
               ),

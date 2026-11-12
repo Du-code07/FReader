@@ -4132,10 +4132,12 @@ class default_DefaultViewManager {
         }
       }
     } else if (this.isPaginated && this.settings.axis === "vertical") {
+      // FReader: 상대 이동(scrollBy) 대신 쪽 경계에 맞춘 절대 위치로 이동 (어긋난 위치에서 계속 어긋나지 않게)
       this.scrollTop = this.container.scrollTop;
-      let top = this.container.scrollTop + this.container.offsetHeight;
-      if (top < this.container.scrollHeight) {
-        this.scrollBy(0, this.layout.height, true);
+      let pageH = this.layout.height || this.container.offsetHeight;
+      let target = (Math.round(this.container.scrollTop / pageH) + 1) * pageH;
+      if (target < this.container.scrollHeight - 1) {
+        this.scrollTo(0, target, true);
       } else {
         next = this.views.last().section.next();
       }
@@ -4196,8 +4198,9 @@ class default_DefaultViewManager {
     } else if (this.isPaginated && this.settings.axis === "vertical") {
       this.scrollTop = this.container.scrollTop;
       let top = this.container.scrollTop;
-      if (top > 0) {
-        this.scrollBy(0, -this.layout.height, true);
+      let pageH = this.layout.height || this.container.offsetHeight;
+      if (top > 1) {
+        this.scrollTo(0, Math.max(0, Math.round(top / pageH) - 1) * pageH, true);
       } else {
         prev = this.views.first().section.prev();
       }
@@ -6014,7 +6017,9 @@ class Contents {
     this.css("max-width", "inherit");
     this.css(COLUMN_FILL, "auto");
     this.css(COLUMN_GAP, gap + "px");
-    this.css(COLUMN_WIDTH, columnWidth + "px");
+    // FReader: 세로쓰기(vertical-rl)는 단이 위아래로 쌓이므로 단 너비를 쪽 높이 이상으로 두어 한 쪽에 한 단만 오게 한다
+    // (화면이 길면 한 쪽에 단이 2개 생겨 쪽 경계가 어긋나고 넘김이 튀던 문제)
+    this.css(COLUMN_WIDTH, (axis === "vertical" ? Math.max(columnWidth, height) : columnWidth) + "px");
 
     // Fix glyph clipping in WebKit
     // https://github.com/futurepress/epub.js/issues/983

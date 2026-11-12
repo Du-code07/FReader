@@ -120,7 +120,7 @@ class _ChoiceSheetState<T> extends State<_ChoiceSheet<T>> {
         child: Row(
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 22, color: cs.onSurfaceVariant),
+              Icon(icon, size: 19, color: cs.onSurfaceVariant),
               const SizedBox(width: 14),
             ],
             Expanded(
@@ -157,9 +157,10 @@ class _ChoiceSheetState<T> extends State<_ChoiceSheet<T>> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (final opt in widget.options)
+                  for (final opt in widget.options) ...[
+                    if (opt != widget.options.first) Divider(height: 1, indent: 24, endIndent: 24, color: cs.outlineVariant.withValues(alpha: 0.5)),
                     Material(
-                      color: opt.value == _selected ? cs.secondaryContainer.withValues(alpha: 0.55) : Colors.transparent,
+                      color: Colors.transparent,
                       child: InkWell(
                         // 누르면 바로 적용: 고르기만 있는 창은 바로 닫히고, 스위치가 함께 있는 창은 열린 채로 적용
                         onTap: () {
@@ -172,7 +173,7 @@ class _ChoiceSheetState<T> extends State<_ChoiceSheet<T>> {
                           child: Row(
                             children: [
                               if (opt.icon != null) ...[
-                                Icon(opt.icon, size: 22, color: opt.value == _selected ? cs.primary : cs.onSurfaceVariant),
+                                Icon(opt.icon, size: 19, color: opt.value == _selected ? cs.primary : cs.onSurfaceVariant),
                                 const SizedBox(width: 14),
                               ],
                               Expanded(
@@ -181,20 +182,40 @@ class _ChoiceSheetState<T> extends State<_ChoiceSheet<T>> {
                                   style: TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w600,
-                                    color: opt.value == _selected ? cs.primary : cs.onSurface,
+                                    color: cs.onSurface,
                                   ),
                                 ),
                               ),
+                              // 정렬 및 보기 창처럼: 고른 것은 채운 동그라미에 체크, 나머지는 빈 동그라미
                               Icon(
-                                opt.value == _selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                                size: 26,
-                                color: opt.value == _selected ? cs.primary : cs.outline,
+                                opt.value == _selected ? Icons.check_circle : Icons.circle_outlined,
+                                size: 23,
+                                color: opt.value == _selected ? cs.onSurface : cs.outline,
                               ),
                             ],
                           ),
                         ),
                       ),
                     ),
+                    // 이 선택지를 골랐을 때만 쓰는 스위치는 그 선택지 바로 밑에 (예: 표지형 → 표지 그림 끄기)
+                    if (opt.value == _selected)
+                      for (int i = 0; i < widget.moreToggles.length; i++)
+                        if (widget.moreToggles[i].onlyFor != null && widget.moreToggles[i].onlyFor == opt.value)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 20),
+                            child: _toggleRow(
+                              cs,
+                              icon: widget.moreToggles[i].icon,
+                              label: widget.moreToggles[i].label,
+                              subtitle: widget.moreToggles[i].subtitle,
+                              value: _more[i],
+                              onChanged: (v) {
+                                setState(() => _more[i] = v);
+                                widget.moreToggles[i].onChanged(v);
+                              },
+                            ),
+                          ),
+                  ],
                   if (widget.toggleLabel != null) ...[
                     const Divider(height: 16, indent: 24, endIndent: 24),
                     _toggleRow(
@@ -209,7 +230,7 @@ class _ChoiceSheetState<T> extends State<_ChoiceSheet<T>> {
                       },
                     ),
                     for (int i = 0; i < widget.moreToggles.length; i++)
-                      if (widget.moreToggles[i].onlyFor == null || widget.moreToggles[i].onlyFor == _selected)
+                      if (widget.moreToggles[i].onlyFor == null)
                       _toggleRow(
                         cs,
                         icon: widget.moreToggles[i].icon,
@@ -226,6 +247,24 @@ class _ChoiceSheetState<T> extends State<_ChoiceSheet<T>> {
               ),
             ),
           ),
+          // 스위치가 함께 있는 창은 맨 아래 '완료'로 닫음
+          if (widget.toggleLabel != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+              child: SizedBox(
+                height: 52,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: cs.onSurface,
+                    foregroundColor: cs.surface,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () => Navigator.pop(context, (_selected, _toggle)),
+                  child: Text(widget.confirmLabel.isNotEmpty ? widget.confirmLabel : MaterialLocalizations.of(context).okButtonLabel,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ),
           const SizedBox(height: 16),
         ],
       ),

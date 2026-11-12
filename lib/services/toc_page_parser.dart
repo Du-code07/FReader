@@ -195,6 +195,86 @@ class TocPageParser {
     return prefix.isEmpty ? bestLine : '$prefix $bestLine';
   }
 
+  /// 그림 글자 읽기(OCR)에서 흔한 잘못 읽은 흔적 수: 한글 사이에 낀 영문자(메커L즘),
+  /// 한글에 바로 붙은 숫자(01섬질체화) 등
+  static int ocrSuspicion(String title) {
+    final core = _core(title);
+    int n = 0;
+    n += RegExp(r'[가-힣][A-Za-z]|[A-Za-z][가-힣]').allMatches(core).length * 2;
+    n += RegExp(r'[가-힣]\d|\d[가-힣]').allMatches(core).length * 2;
+    if (RegExp(r'^\d').hasMatch(core)) n += 2;
+    // 번호 끝에 한글이 띄어쓰기 없이 바로 붙은 '2-3.01섬질'
+    if (RegExp(r'\d[.\-]\d+[가-힣]').hasMatch(title.trim())) n += 2;
+    n += RegExp(r'[|¦\\~^`{}<>]').allMatches(core).length;
+    return n;
+  }
+
+  /// 목차 항목 하나의 글자를 여러 번 읽은 결과 중에서 고름.
+  /// [title]: 처음 읽은 목차 글자, [variants]: 다른 크기로 다시 읽은 같은 항목들,
+  /// [slideLines]: 그 항목이 가리키는 슬라이드(제목·부제목은 글자가 커서 더 정확함)의 줄들.
+  /// 여러 번 같게 읽힌 글자와, 잘못 읽은 흔적이 적은 글자를 고른다.
+  static String chooseTitle(String title, List<String> variants, List<String> slideLines) {
+    final cands = <String>[title];
+    for (final v in variants) {
+      if (v.trim().isNotEmpty) cands.add(v.trim());
+    }
+    // 자주 보이는 잘못 읽기를 고친 후보도 넣음: '01'→'이'(이성질체), 한글 사이 'L'→'니'(메커니즘)
+    for (final c in List<String>.of(cands)) {
+      final core = _core(c);
+      if (core.isEmpty) continue;
+      var fixed = core
+          .replaceAllMapped(RegExp(r'(^|[\s.])[0O][1lI|](?=[가-힣])'), (m) => '${m[1]}이')
+          .replaceAllMapped(RegExp(r'([가-힣])[0O][1lI|](?=[가-힣])'), (m) => '${m[1]}이')
+          .replaceAllMapped(RegExp(r'([가-힣])L(?=[가-힣])'), (m) => '${m[1]}니');
+      final i0 = c.indexOf(core);
+      var pre = i0 > 0 ? c.substring(0, i0).trimRight() : '';
+      // '2-3.01섬질'처럼 '01'이 번호에 붙어 읽힌 경우: 번호에서 떼어 냄
+      final m = RegExp(r'^(.*?\d)\.0[1lI|]$').firstMatch(pre);
+      if (m != null) {
+        pre = '${m[1]}.';
+        fixed = '이$fixed';
+      }
+      if (fixed != core) cands.add(pre.isEmpty ? fixed : '$pre $fixed');
+    }
+    final fromSlide = <String>{};
+    for (final c in List<String>.of(cands)) {
+      final r = refineTitle(c, slideLines);
+      if (r != c) {
+        cands.add(r);
+        fromSlide.add(r);
+      }
+    }
+    String best = title;
+    double bestScore = -1e9;
+    for (int i = 0; i < cands.length; i++) {
+      final c = cands[i];
+      final nc = _norm(_core(c));
+      if (nc.isEmpty) continue;
+      int agree = 0;
+      for (int j = 0; j < cands.length; j++) {
+        if (j != i && _similar(_norm(_core(cands[j])), nc) >= 0.75) agree++;
+      }
+      double score = agree * 1.0 - ocrSuspicion(c) * 1.5 + (fromSlide.contains(c) ? 1.2 : 0);
+      if (i == 0) score += 0.1; // 똑같으면 처음 것
+      if (score > bestScore) {
+        bestScore = score;
+        best = c;
+      }
+    }
+    // 번호는 목차의 것을 유지 (다시 읽은 쪽 번호가 다를 수 있음)
+    final i0 = title.indexOf(_core(title));
+    final prefix = i0 > 0 ? title.substring(0, i0).trimRight() : '';
+    final bc = _core(best);
+    if (prefix.isNotEmpty && best != title && _numbers(best) == null) return '$prefix $bc';
+    if (prefix.isNotEmpty && best != title && _numbers(best) != null && _numbers(title) != null) {
+      final a = _numbers(best)!, b = _numbers(title)!;
+      // 처음 읽은 번호가 '2-3.01'처럼 글자를 숫자로 잘못 읽어 길어진 경우는 다시 읽은 번호를 씀
+      if (a.length <= b.length && List.generate(a.length, (k) => a[k] == b[k]).every((x) => x)) return best;
+      return '$prefix $bc';
+    }
+    return best;
+  }
+
   /// 쪽 [lines] 안에 제목이 있는가 (그대로, 번호 뗀 제목, 거의 같은 줄)
   static bool _pageHas(String normPage, List<String> lines, String title) {
     final full = _norm(title), core = _norm(_core(title));

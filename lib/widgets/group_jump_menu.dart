@@ -8,7 +8,10 @@ typedef ScaleMenuItem<T> = (T, String, IconData, Color?);
 /// 누른 아이콘(칩)에서 빠져나오며 커지고, 닫힐 때는 다시 작아지며 그 안으로 들어가는 메뉴.
 /// [전체] 그룹 목록, 파일의 점 3개 메뉴가 같이 쓴다.
 class GroupJumpMenuRoute<T> extends PopupRoute<T> {
-  GroupJumpMenuRoute({required this.anchor, required this.items, this.barrierLabel});
+  GroupJumpMenuRoute({required this.anchor, required this.items, this.barrierLabel, this.leadingFor});
+
+  /// 줄 앞 그림을 따로 줄 때 (예: 그룹 이름이 파일 형식이면 그 형식 아이콘). null이면 기본 아이콘
+  final Widget? Function(T value)? leadingFor;
 
   /// 누른 아이콘(칩)의 화면 위치
   final Rect anchor;
@@ -71,7 +74,7 @@ class GroupJumpMenuRoute<T> extends PopupRoute<T> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     child: Row(
                       children: [
-                        Icon(icon, size: 18, color: color ?? cs.onSurfaceVariant),
+                        leadingFor?.call(value) ?? Icon(icon, size: 16, color: color ?? cs.onSurfaceVariant),
                         const SizedBox(width: 10),
                         Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, color: color))),
                       ],

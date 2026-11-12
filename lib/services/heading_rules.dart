@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 /// 목차 쪽이 없을 때의 목차 규칙.
 ///
 /// 한글·워드·PDF ([build]):
@@ -37,13 +38,15 @@ class HeadingRules {
   /// 문장(본문)으로 보이는 줄: "…했다.", "…해요." 처럼 끝나는 긴 줄
   static bool _sentence(String t) => t.length > 15 && RegExp(r'(다|요|니다)[.!?]?$').hasMatch(t);
 
-  /// 번호 붙은 본문 항목(목록)으로 보이는 줄: 중간에 문장이 끝나거나(". "), "제목 : 설명" 꼴, 쉼표가 들어간 긴 줄
-  static bool _listItem(String t) {
+  /// 번호 붙은 본문 항목(목록)으로 보이는 줄: 중간에 문장이 끝나거나(". "), "제목 : 설명" 꼴, 쉼표가 들어간 긴 줄.
+  /// 문장 끝 뒤에 짧은 표시(예: '…무엇인가요? O')만 붙은 것은 목록으로 보지 않음.
+  /// 줄 전체가 굵은 제목([bold])은 쉼표가 있어도 제목으로 봄 (질문 목록 등)
+  static bool _listItem(String t, {bool bold = false}) {
     final m = RegExp(r'^\S+\s*').firstMatch(t);
     final core = m == null ? t : t.substring(m.end);
-    if (RegExp(r'[.!?]\s+\S').hasMatch(core)) return true;
+    if (RegExp(r'[.!?]\s+\S*[가-힣A-Za-z]{2,}').hasMatch(core)) return true;
     if (RegExp(r'\s:\s*\S').hasMatch(core)) return true;
-    if (core.contains(',') && core.length > 20) return true;
+    if (!bold && core.contains(',') && core.length > 20) return true;
     return false;
   }
 
@@ -75,7 +78,8 @@ class HeadingRules {
     final numbered = <Map<String, Object?>>[];
     for (final c in candidates) {
       final title = _clean(c['title']);
-      if (title.length > 40 || _sentence(title) || _listItem(title) || !prominent(c)) continue;
+      final bool wholeBold = c['bold'] == true;
+      if (title.length > (wholeBold ? 100 : 40) || _sentence(title) || _listItem(title, bold: wholeBold) || !prominent(c)) continue;
       final kind = kindOf(title);
       if (kind == null || !seen.add(norm(title))) continue;
       if (!order.contains(kind)) order.add(kind);
@@ -145,9 +149,14 @@ class HeadingRules {
         lines.add((t: t, y: (l['y'] as num?)?.toDouble() ?? 0, size: size));
       }
       if (lines.isEmpty) continue;
-      var title = lines.first;
-      for (final l in lines) {
-        if (l.size > title.size + 1e-6 || ((l.size - title.size).abs() < 1e-6 && l.y < title.y)) title = l;
+      // 슬라이드 제목은 보통 위쪽에 있음: 위쪽 30% 안에 꽤 큰 줄이 있으면 그 안에서 고름 (그림 속 큰 글자가 제목이 되지 않게)
+      final double maxSize = lines.map((l) => l.size).reduce(math.max);
+      final top = lines.where((l) => l.y < 0.3).toList();
+      final pool = top.isNotEmpty && top.map((l) => l.size).reduce(math.max) >= maxSize * 0.6 ? top : lines;
+      var title = pool.first;
+      for (final l in pool) {
+        // 크기가 거의 같으면(5% 이내) 위쪽 줄을 제목으로 (글자 위치 읽기 오차로 아래 줄이 뽑히지 않게)
+        if (l.size > title.size * 1.05 + 1e-6 || ((l.size - title.size).abs() <= title.size * 0.05 + 1e-6 && l.y < title.y)) title = l;
       }
       String sub = '';
       final below = lines.where((l) => !identical(l, title) && l.y > title.y && l.t != title.t).toList()

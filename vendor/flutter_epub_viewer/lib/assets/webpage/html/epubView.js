@@ -235,11 +235,17 @@ function renderBook(data, opts, loadToken) {
     try {
       var md = (book.package && book.package.metadata) || {};
       var rtl = md.direction === 'rtl' || (book.spine && book.spine.direction === 'rtl');
-      if (rtl && rendition && rendition.settings && rendition.settings.manager === 'continuous') {
+      if (rtl && rendition && rendition.settings && rendition.settings.manager === 'continuous' && rendition.settings.flow === 'paginated') {
         rendition.settings.manager = 'default';
       }
     } catch (e) {}
   });
+  // FReader: 스크롤 보기는 장(챕터)마다 한 화면으로 세로로 내려 읽고(scrolled-doc),
+  // 장 끝에서 한 번 더 위로 밀면 다음 장, 장 처음에서 아래로 밀면 앞 장 끝으로 간다
+  if (flow === 'scrolled') {
+    flow = 'scrolled-doc';
+    manager = 'default';
+  }
   rendition = book.renderTo("viewer", {
     manager: manager,
     flow: flow,
@@ -250,6 +256,7 @@ function renderBook(data, opts, loadToken) {
     allowScriptedContent: allowScriptedContent,
     defaultDirection: direction
   });
+  if (flow === 'scrolled-doc') freaderAttachChapterScroll(rendition);
   // epub.js emits displayerror for chapter/iframe failures without rejecting
   // its pending display promise. Listening only to Promise.catch leaves a
   // permanently blank reader in that case.
@@ -1647,16 +1654,13 @@ function renderBook(data, opts, loadToken) {
             return;
           }
 
-          if (direction == 'l') {
+          // FReader: 읽기 방향이 우→좌면 오른쪽으로 밀 때 다음 쪽
+          var goNext = (direction == 'l') !== !!freaderSwipeReversed;
+          // FReader: 페이지 모드에서 '슬라이드'를 끄면 밀어서 넘기지 않음
+          if ((direction == 'l' || direction == 'r') && freaderSwipeEnabled) {
             // Double-check before calling
             if (!hasActiveSelection()) {
-              rendition.next();
-            }
-          }
-          if (direction == 'r') {
-            // Double-check before calling
-            if (!hasActiveSelection()) {
-              rendition.prev();
+              if (goNext) rendition.next(); else rendition.prev();
             }
           }
         });
@@ -1967,7 +1971,9 @@ notifyEpubReady();
 // Helper function to check if there's an active text selection (global version)
 function hasActiveSelection() {
   // Check our tracking variables first
-  if (isSelecting || lastCfiRange) {
+  // FReader: 기억해 둔 선택(lastCfiRange)만 남고 화면의 선택은 이미 사라진 경우까지 '선택 중'으로 보면
+  // 쪽을 넘길 때마다 막히고 원래 쪽으로 되돌아간다 → 실제로 글이 선택되어 있는지만 본다
+  if (isSelecting) {
     return true;
   }
 
@@ -2050,6 +2056,125 @@ function setupRenditionBlocking() {
     };
   }
 }
+
+// FReader: 스크롤 보기에서 화면 맨 위 줄이 반쯤 잘려 보이지 않게, 그 줄(또는 짧은 문단·제목)의 위쪽에 맞춤
+function freaderSnapScrollToLine() {
+  try {
+    var c = rendition && rendition.manager && rendition.manager.container;
+    var frame = c && c.querySelector('iframe');
+    var doc = frame && frame.contentDocument;
+    if (!c || !doc || !doc.body) return;
+    var offset = frame.getBoundingClientRect().top - c.getBoundingClientRect().top + c.scrollTop;
+    var y = c.scrollTop - offset;
+    if (y <= 2) return;
+    var bodyRect = doc.body.getBoundingClientRect();
+    var x = Math.max(4, bodyRect.left + 8);
+    var el = doc.elementFromPoint(x, y + 2) || doc.elementFromPoint(bodyRect.left + bodyRect.width / 2, y + 2);
+    var block = el && el.closest ? el.closest('p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, figure, div') : null;
+    var target = null;
+    if (block && block !== doc.body) {
+      var r = block.getBoundingClientRect();
+      // 짧은 문단·제목은 통째로 보이게
+      if (r.top < y && y - r.top < c.clientHeight * 0.45) target = r.top;
+    }
+    if (target === null && doc.caretRangeFromPoint) {
+      var range = doc.caretRangeFromPoint(x, y + 2);
+      var rects = range ? range.getClientRects() : [];
+      var line = rects && rects.length ? rects[0] : null;
+      if (line && line.top < y) target = line.top - 2;
+    }
+    if (target !== null) c.scrollTop = Math.max(0, Math.floor(target + offset - 6));
+  } catch (e) {}
+}
+
+// FReader: 스크롤 보기(scrolled-doc)에서 장 끝/처음을 넘어 밀면 다음/앞 장으로
+function freaderAttachChapterScroll(r) {
+  var startY = null, wasBottom = false, wasTop = false, busy = false;
+  function box() { return r && r.manager && r.manager.container; }
+  function atBottom(c) { return c.scrollTop + c.clientHeight >= c.scrollHeight - 4; }
+  function atTop(c) { return c.scrollTop <= 2; }
+  // 장의 처음/끝에 닿으면 앱에 알림 (앱이 '이전 챕터 / 다음 챕터' 버튼을 띄움)
+  var lastEdge = '';
+  function reportEdge() {
+    var c = box(); if (!c) return;
+    var sec = freaderCurrentSection();
+    var st = atTop(c), en = atBottom(c);
+    var first = !sec || !sec.prev(), last = !sec || !sec.next();
+    var key = [st, en, first, last].join();
+    if (key === lastEdge) return;
+    lastEdge = key;
+    try { window.flutter_inappwebview.callHandler('chapterEdge', { atStart: st, atEnd: en, first: first, last: last }); } catch (e) {}
+  }
+  var edgeTimer = null;
+  function scheduleEdge() { if (edgeTimer) return; edgeTimer = setTimeout(function () { edgeTimer = null; reportEdge(); }, 120); }
+  var watched = null;
+  r.on('rendered', function () {
+    var c = box();
+    if (c && watched !== c) { watched = c; c.addEventListener('scroll', scheduleEdge, { passive: true }); }
+    lastEdge = '';
+    setTimeout(reportEdge, 200);
+  });
+  r.on('relocated', scheduleEdge);
+  r.hooks.content.register(function (contents) {
+    var doc = contents && contents.document;
+    if (!doc) return;
+    doc.addEventListener('touchstart', function (e) {
+      var c = box(); if (!c || !e.touches || e.touches.length !== 1) { startY = null; return; }
+      startY = e.touches[0].clientY; wasBottom = atBottom(c); wasTop = atTop(c);
+    }, { passive: true });
+    doc.addEventListener('touchend', function (e) {
+      var c = box(); if (!c || startY === null || busy) return;
+      var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
+      var dy = t.clientY - startY; startY = null;
+      if (dy < -70 && wasBottom && atBottom(c)) {
+        busy = true;
+        Promise.resolve(r.next()).then(function () { var cc = box(); if (cc) cc.scrollTop = 0; }).finally(function () { busy = false; });
+      } else if (dy > 70 && wasTop && atTop(c)) {
+        busy = true;
+        Promise.resolve(r.prev()).then(function () {
+          setTimeout(function () { var cc = box(); if (cc) cc.scrollTop = cc.scrollHeight; }, 60);
+        }).finally(function () { busy = false; });
+      }
+    }, { passive: true });
+  });
+}
+
+// FReader: 지금 보고 있는 장(spine 항목)
+function freaderCurrentSection() {
+  try {
+    var loc = rendition.currentLocation();
+    var idx = loc && loc.start ? loc.start.index : null;
+    if (idx === null || idx === undefined) {
+      var v = rendition.manager && rendition.manager.views && rendition.manager.views.first && rendition.manager.views.first();
+      idx = v && v.section ? v.section.index : 0;
+    }
+    return book.spine.get(idx);
+  } catch (e) { return null; }
+}
+// FReader: 스크롤 보기의 '이전 챕터 / 다음 챕터' 버튼 (장의 처음부터 보여 줌)
+function freaderGoChapter(dir) {
+  var sec = freaderCurrentSection();
+  var target = sec ? (dir > 0 ? sec.next() : sec.prev()) : null;
+  if (!target) return;
+  Promise.resolve(rendition.display(target.href)).then(function () {
+    var c = rendition.manager && rendition.manager.container;
+    if (c) c.scrollTop = 0;
+    try { rendition.reportLocation(); } catch (e) {}
+  });
+}
+window.freaderGoChapter = freaderGoChapter;
+
+// FReader: 읽기 방향이 우→좌일 때 손가락으로 미는 방향을 반대로
+var freaderSwipeReversed = false;
+var freaderSwipeEnabled = true;
+function setSwipeEnabled(v) {
+  freaderSwipeEnabled = !!v;
+}
+window.setSwipeEnabled = setSwipeEnabled;
+function setSwipeReversed(v) {
+  freaderSwipeReversed = !!v;
+}
+window.setSwipeReversed = setSwipeReversed;
 
 //move to next page
 function next() {
@@ -2381,9 +2506,11 @@ function clearSelection() {
       }
 
       // Notify Flutter that selection was cleared - only if we've actually sent a selection
-      if (hasSentSelection && (isSelecting || lastCfiRange) && window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
-        isSelecting = false;
-        lastCfiRange = null;
+      var hadSelection = hasSentSelection && (isSelecting || lastCfiRange);
+      // FReader: 알림 여부와 관계없이 선택 상태는 항상 지운다 (남아 있으면 쪽 넘김이 막히거나 되돌아감)
+      isSelecting = false;
+      lastCfiRange = null;
+      if (hadSelection && window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
         hasSentSelection = false;
         if (selectionTimeout) {
           clearTimeout(selectionTimeout);
@@ -2478,12 +2605,23 @@ function setFontSize(fontSize) {
     var loc = rendition.currentLocation();
     cfi = loc && loc.start && loc.start.cfi;
   } catch (e) {}
+  // FReader: 스크롤 보기에서 장 맨 위를 보고 있었으면 바뀐 뒤에도 맨 위에서
+  var scrolledTop = false;
+  try {
+    var box0 = rendition.manager && rendition.manager.container;
+    scrolledTop = isScrolledFlow() && box0 && box0.scrollTop <= 2;
+  } catch (e) {}
   rendition.themes.fontSize(`${fontSize}px`);
   if (fontRealignTimer) clearTimeout(fontRealignTimer);
   fontRealignTimer = setTimeout(function () {
     fontRealignTimer = null;
-    var shown = cfi ? rendition.display(cfi) : null;
+    var shown = cfi && !scrolledTop ? rendition.display(cfi) : null;
     Promise.resolve(shown).catch(function () {}).then(function () {
+      if (isScrolledFlow()) {
+        var box1 = rendition.manager && rendition.manager.container;
+        if (scrolledTop && box1) box1.scrollTop = 0;
+        else freaderSnapScrollToLine();
+      }
       try { rendition.reportLocation(); } catch (e) {}
     });
   }, 120);
@@ -3104,7 +3242,8 @@ function detectSwipe(el, func) {
       }
     } else {
       // Only prevent default if we're actually tracking a swipe
-      e.preventDefault();
+      // FReader: 스크롤 보기에서는 막지 않음 (막으면 손가락으로 내려 읽을 수 없음)
+      if (!isScrolledFlow()) e.preventDefault();
       var t = e.touches[0];
       swipe_det.eX = t.clientX;
       swipe_det.eY = t.clientY;

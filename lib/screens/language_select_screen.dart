@@ -118,7 +118,7 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen> {
                           backgroundColor: code == _selected ? cs.primary : cs.surfaceContainerHighest,
                           foregroundColor: code == _selected ? cs.onPrimary : cs.onSurfaceVariant,
                           child: code == 'system'
-                              ? const Icon(Icons.phone_android, size: 19)
+                              ? const Icon(Icons.phone_android, size: 17)
                               : Text(_badge(code), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                         ),
                         title: Text(languageOptionLabel(code), style: const TextStyle(fontWeight: FontWeight.w600)),

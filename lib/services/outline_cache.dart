@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 /// 중간에 닫아도 다음에 이어서 읽는다.
 class OutlineCache {
   /// 목차 만드는 규칙이 바뀌면 올린다 (예전 결과는 버림)
-  static const int version = 7;
+  static const int version = 10;
 
   static Future<Directory> _dir() async {
     final d = Directory('${(await getApplicationSupportDirectory()).path}/outline_cache');

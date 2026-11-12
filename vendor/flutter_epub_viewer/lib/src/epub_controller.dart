@@ -135,6 +135,21 @@ class EpubController {
     webViewController?.callMethod('removeUnderLine', [cfi]);
   }
 
+  /// FReader: 스크롤 보기에서 이전(-1)/다음(1) 장의 처음으로
+  void goChapter(int dir) {
+    webViewController?.callMethod('freaderGoChapter', [dir]);
+  }
+
+  /// FReader: 화면을 밀어서 쪽을 넘길지 (페이지 모드의 '슬라이드')
+  void setSwipeEnabled(bool enabled) {
+    webViewController?.callMethod('setSwipeEnabled', [enabled]);
+  }
+
+  /// FReader: 읽기 방향이 우→좌면 화면을 미는 방향을 반대로 (오른쪽으로 밀면 다음 쪽)
+  void setSwipeReversed(bool reversed) {
+    webViewController?.callMethod('setSwipeReversed', [reversed]);
+  }
+
   ///Clears any active text selection in the epub viewer
   void clearSelection() {
     checkEpubLoaded();
