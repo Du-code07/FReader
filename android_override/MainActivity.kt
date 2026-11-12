@@ -88,6 +88,9 @@ class MainActivity : FlutterActivity(), SensorEventListener {
     private var shakeCount = 0
     private var firstShakeTime = 0L
     private val thumbExecutor = Executors.newFixedThreadPool(4)
+    private val REQ_SCAN_CAMERA = 4821
+    private var pendingCameraResult: MethodChannel.Result? = null
+    private var pendingCameraFile: File? = null
 
     // 상단 상태표시줄을 한번 내렸을 때 약 1.5초 후 다시 숨김.
     // 예전처럼 0.75초마다 계속 확인하는 반복 작업은 배터리를 소모하므로, 상태표시줄이 나타날 때(창 인셋 변경)만 처리
@@ -118,7 +121,41 @@ class MainActivity : FlutterActivity(), SensorEventListener {
         }
     }
 
+    // 서재(첫 화면): 상태표시줄은 늘 보이고, 내비게이션 바는 버튼 방식일 때만 보임. 파일 열람 중에는 모두 숨김
+    @Volatile private var libraryBars = true
+
+    /// 내비게이션 바가 버튼(3버튼·2버튼) 방식인가 (제스처 방식이면 false)
+    private fun isButtonNavigation(): Boolean = try {
+        android.provider.Settings.Secure.getInt(contentResolver, "navigation_mode", 0) != 2
+    } catch (_: Throwable) { true }
+
+    private fun showLibraryBars() {
+        try {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                window.setDecorFitsSystemWindows(false)
+                window.insetsController?.let { controller ->
+                    controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_DEFAULT
+                    controller.show(WindowInsets.Type.statusBars())
+                    if (isButtonNavigation()) controller.show(WindowInsets.Type.navigationBars())
+                    else controller.hide(WindowInsets.Type.navigationBars())
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                )
+            }
+        } catch (_: Throwable) {}
+    }
+
     private fun hideSystemStatusBar(alsoHideNavBar: Boolean = false) {
+        if (libraryBars) {
+            showLibraryBars()
+            return
+        }
         try {
             window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
             window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
@@ -187,7 +224,7 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                 @Suppress("DEPRECATION")
                 insets.systemWindowInsetTop > 0
             }
-            if (statusBarVisible && isActivityResumed) {
+            if (statusBarVisible && isActivityResumed && !libraryBars) {
                 scheduleStatusBarReHide()
             }
             v.onApplyWindowInsets(insets)
@@ -461,6 +498,75 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                         runOnUiThread { result.error("PDF_ERR", e.message, null) }
                     }
                 }.start()
+            } else if (call.method == "cropTrimImage") {
+                // 스크롤 보기용 쪽 그림: 그림 파일을 쪽 자리만 잘라 위아래 빈 종이를 걷어 냄
+                val inPath = call.argument<String>("input")
+                val outPath = call.argument<String>("output")
+                if (inPath == null || outPath == null) {
+                    result.error("ARG", "path", null)
+                    return@setMethodCallHandler
+                }
+                val crop = call.argument<List<Number>>("crop")
+                val trim = call.argument<Boolean>("trim") ?: true
+                val paper = (call.argument<Number>("paper") ?: 0xFFFFFFFFL).toLong().toInt()
+                val pad = ((call.argument<Number>("pad") ?: 0.035).toFloat()).coerceIn(0f, 0.3f)
+                val trimTop = call.argument<Boolean>("trimTop") ?: true
+                Thread {
+                    try {
+                        val src = BitmapFactory.decodeFile(inPath) ?: throw IllegalStateException("decode")
+                        val size = cropTrimSave(src, crop, trim, paper, pad, outPath, trimTop)
+                        runOnUiThread { result.success(listOf(size[0], size[1])) }
+                    } catch (e: Throwable) {
+                        runOnUiThread { result.error("CROP_ERR", e.message, null) }
+                    }
+                }.start()
+            } else if (call.method == "requestNotificationPermission") {
+                // 안드로이드 13 이상: 알림 허용을 한 번 물음 (이미 허용했거나 거절했으면 조용히)
+                if (Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    try { requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 4711) } catch (_: Throwable) {}
+                }
+                result.success(null)
+            } else if (call.method == "showNotification") {
+                // 휴대폰 상태 표시줄 알림 (누르면 앱으로). 알림을 쓸 수 없으면 false
+                val title = call.argument<String>("title") ?: "FReader"
+                val text = call.argument<String>("text") ?: ""
+                val id = (call.argument<Number>("id") ?: 1).toInt()
+                result.success(postStatusNotification(title, text, id))
+            } else if (call.method == "captureScrollPage") {
+                // 스크롤 보기 준비용 숨은 문서 화면(주소에 freaderScroll=1)을 바로 그림으로:
+                // 화면(UI) 스레드에서는 그리기만 하고, 자르기·여백 걷기·저장은 다른 스레드에서 (화면이 버벅이지 않게)
+                val outPath = call.argument<String>("output")
+                if (outPath == null) {
+                    result.error("ARG", "path", null)
+                    return@setMethodCallHandler
+                }
+                val crop = call.argument<List<Number>>("crop")
+                val paper = (call.argument<Number>("paper") ?: 0xFFFFFFFFL).toLong().toInt()
+                val pad = ((call.argument<Number>("pad") ?: 0.035).toFloat()).coerceIn(0f, 0.3f)
+                val trimTop = call.argument<Boolean>("trimTop") ?: true
+                val tag = call.argument<String>("tag")
+                val webView = findScrollWebView(window.decorView, tag)
+                if (webView == null || webView.width <= 0 || webView.height <= 0) {
+                    result.error("NO_WEBVIEW", "scroll webview not found", null)
+                    return@setMethodCallHandler
+                }
+                try {
+                    val bitmap = Bitmap.createBitmap(webView.width, webView.height, Bitmap.Config.ARGB_8888)
+                    val canvas = Canvas(bitmap)
+                    canvas.drawColor(paper)
+                    webView.draw(canvas)
+                    Thread {
+                        try {
+                            val size = cropTrimSave(bitmap, crop, true, paper, pad, outPath, trimTop)
+                            runOnUiThread { result.success(listOf(size[0], size[1])) }
+                        } catch (e: Throwable) {
+                            runOnUiThread { result.error("CROP_ERR", e.message, null) }
+                        }
+                    }.start()
+                } catch (e: Throwable) {
+                    result.error("CAPTURE_ERR", e.message, null)
+                }
             } else if (call.method == "wakeHiddenWebViews") {
                 // 서재 표지(첫 페이지) 만들기용 화면 밖 WebView: 숨김 상태면 그리기를 멈추므로
                 // 완전히 투명하게 + 화면 밖으로 옮긴 뒤 '보이는' 상태로 둔다 (사용자에게는 안 보임)
@@ -496,9 +602,19 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                     canvas.scale(bw.toFloat() / webView.width, bh.toFloat() / webView.height)
                     canvas.translate(-webView.scrollX.toFloat(), -webView.scrollY.toFloat())
                     webView.draw(canvas)
+                    // 스크롤 보기용: 쪽 자리만 잘라 냄 (crop = [x, y, w, h], 화면 대비 0~1)
+                    val crop = call.argument<List<Number>>("crop")
+                    val shot = if (crop != null && crop.size == 4) {
+                        val cx = (crop[0].toFloat() * bw).toInt().coerceIn(0, bw - 1)
+                        val cy = (crop[1].toFloat() * bh).toInt().coerceIn(0, bh - 1)
+                        val cw = (crop[2].toFloat() * bw).toInt().coerceIn(1, bw - cx)
+                        val ch = (crop[3].toFloat() * bh).toInt().coerceIn(1, bh - cy)
+                        Bitmap.createBitmap(bmp, cx, cy, cw, ch).also { if (it !== bmp) bmp.recycle() }
+                    } else bmp
                     val transparent = (bg ushr 24) == 0
                     Thread {
                         try {
+                            val bmp = shot
                             val out = java.io.ByteArrayOutputStream()
                             // 배경이 투명(종이 질감 위)이면 투명도를 살리는 PNG로
                             if (transparent) bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
@@ -666,6 +782,60 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                 val mode = call.argument<String>("mode") ?: "unspecified"
                 runOnUiThread {
                     applyRequestedScreenOrientation(mode)
+                    result.success(true)
+                }
+            } else if (call.method == "capturePhotoWithCamera") {
+                launchCameraForScan(result)
+            } else if (call.method == "processScannedImage") {
+                val inputPath = call.argument<String>("inputPath")
+                val outputPath = call.argument<String>("outputPath")
+                val mode = call.argument<String>("mode") ?: "scan_bw"
+                val contrast = (call.argument<Number>("contrast")?.toFloat() ?: 0.55f).coerceIn(0f, 1f)
+                val rotation = (call.argument<Number>("rotation")?.toInt() ?: 0)
+                val crop = call.argument<List<Number>>("crop")
+                val maxDim = (call.argument<Number>("maxDim")?.toInt() ?: 1800).coerceIn(600, 3200)
+                if (inputPath == null || outputPath == null) {
+                    result.error("INVALID_ARGS", "Missing inputPath or outputPath", null)
+                    return@setMethodCallHandler
+                }
+                thumbExecutor.execute {
+                    try {
+                        val saved = processDocumentScanBitmap(
+                            inputPath = inputPath,
+                            outputPath = outputPath,
+                            mode = mode,
+                            contrast = contrast,
+                            rotation = rotation,
+                            crop = crop,
+                            maxDim = maxDim
+                        )
+                        runOnUiThread { result.success(saved) }
+                    } catch (e: Throwable) {
+                        runOnUiThread { result.error("SCAN_PROC_ERR", e.message, null) }
+                    }
+                }
+            } else if (call.method == "createScannedPdf") {
+                val imagePaths = call.argument<List<String>>("imagePaths")
+                val outputPath = call.argument<String>("outputPath")
+                if (imagePaths == null || outputPath == null || imagePaths.isEmpty()) {
+                    result.error("INVALID_ARGS", "Missing imagePaths or outputPath", null)
+                    return@setMethodCallHandler
+                }
+                Thread {
+                    try {
+                        val out = buildScannedPdfFromImages(imagePaths, outputPath)
+                        runOnUiThread { result.success(out) }
+                    } catch (e: Throwable) {
+                        runOnUiThread { result.error("SCAN_PDF_ERR", e.message, null) }
+                    }
+                }.start()
+            } else if (call.method == "setLibraryBars") {
+                // 서재에서는 상태표시줄(과 버튼식 내비게이션 바)을 보이고, 파일을 열면 모두 숨김
+                val on = call.argument<Boolean>("on") ?: true
+                runOnUiThread {
+                    libraryBars = on
+                    hideSystemStatusBar(alsoHideNavBar = !on)
+                    if (!on) mainHandler.postDelayed({ hideSystemStatusBar(alsoHideNavBar = true) }, 200L)
                     result.success(true)
                 }
             } else {
@@ -1097,6 +1267,123 @@ class MainActivity : FlutterActivity(), SensorEventListener {
     // ── PDF 내보내기 ──────────────────────────────────────────────────────────
 
     /** 화면에 보이는 WebView 중 가장 큰 것 (EPUB 본문) */
+    private fun postStatusNotification(title: String, text: String, id: Int): Boolean {
+        return try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if (Build.VERSION.SDK_INT >= 24 && !nm.areNotificationsEnabled()) return false
+            val channelId = "freader_prep"
+            if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(channelId) == null) {
+                val ch = android.app.NotificationChannel(channelId, "스크롤 보기 준비", android.app.NotificationManager.IMPORTANCE_DEFAULT)
+                ch.description = "스크롤 보기 준비가 끝나면 알려 줘요"
+                ch.setSound(null, null)
+                nm.createNotificationChannel(ch)
+            }
+            val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            }
+            val pi = if (launch != null) android.app.PendingIntent.getActivity(
+                this, id, launch,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) android.app.PendingIntent.FLAG_IMMUTABLE else 0)
+            ) else null
+            val b = if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(this, channelId)
+                    else @Suppress("DEPRECATION") android.app.Notification.Builder(this)
+            b.setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(android.app.Notification.BigTextStyle().bigText(text))
+                .setAutoCancel(true)
+                .setShowWhen(true)
+            if (pi != null) b.setContentIntent(pi)
+            nm.notify(id, b.build())
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun findScrollWebView(root: View, tag: String? = null): WebView? {
+        if (root is WebView) {
+            val url = try { root.url } catch (_: Throwable) { null }
+            // 숨은 화면이 여러 개(동시에 2개 준비)일 수 있어 작업 표시(tag)까지 맞는 것만
+            if (url != null && url.contains("freaderScroll=1") && (tag == null || url.contains("freaderTag=$tag"))) return root
+            return null
+        }
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                val found = findScrollWebView(root.getChildAt(i), tag)
+                if (found != null) return found
+            }
+        }
+        return null
+    }
+
+    /// 쪽 자리만 잘라(crop = [x, y, w, h], 0~1, 가장자리 몇 픽셀은 안쪽으로) 위아래 빈 종이를 걷고 JPEG로 저장
+    private fun cropTrimSave(src: Bitmap, crop: List<Number>?, trim: Boolean, paper: Int, pad: Float, outPath: String, trimTop: Boolean = true): IntArray {
+        val bw = src.width
+        val bh = src.height
+        var shot = src
+        if (crop != null && crop.size == 4) {
+            // 쪽 테두리에 걸친 줄(바깥 바탕색)이 끼지 않게 가장자리를 조금 안쪽으로
+            val inset = maxOf(2, (bw / 400f).toInt())
+            val cx = ((crop[0].toFloat() * bw).toInt() + inset).coerceIn(0, bw - 1)
+            val cy = ((crop[1].toFloat() * bh).toInt() + inset).coerceIn(0, bh - 1)
+            val cw = ((crop[2].toFloat() * bw).toInt() - inset * 2).coerceIn(1, bw - cx)
+            val ch = ((crop[3].toFloat() * bh).toInt() - inset * 2).coerceIn(1, bh - cy)
+            shot = Bitmap.createBitmap(src, cx, cy, cw, ch)
+            if (shot !== src) src.recycle()
+        }
+        if (trim) {
+            val w = shot.width
+            val h = shot.height
+            val pr = (paper shr 16) and 0xFF
+            val pg = (paper shr 8) and 0xFF
+            val pb = paper and 0xFF
+            val row = IntArray(w)
+            val edge = maxOf(2, w / 100)
+            val span = maxOf(1, w - edge * 2)
+            // 글·그림이 있는 줄인가: 종이색과 다른 점이 있고, 줄 전체를 가로지르는 선(쪽 테두리 등)만 있는 줄은 아님
+            fun content(y: Int): Boolean {
+                shot.getPixels(row, 0, w, 0, y, w, 1)
+                var n = 0
+                var x = edge
+                while (x < w - edge) {
+                    val c = row[x]
+                    if (Math.abs(((c shr 16) and 0xFF) - pr) > 24 ||
+                        Math.abs(((c shr 8) and 0xFF) - pg) > 24 ||
+                        Math.abs((c and 0xFF) - pb) > 24) n++
+                    x += 1
+                }
+                return n > 0 && n < span * 0.92f
+            }
+            var top = 0
+            while (top < h && !content(top)) top++
+            var bottom = h - 1
+            while (bottom > top && !content(bottom)) bottom--
+            val keep = (w * pad).toInt()
+            // 위쪽 여백은 그대로 두는 경우(쪽 넘김 보기와 같은 자리에서 글이 시작되게): 아래 빈 종이만 걷음
+            if (!trimTop && top < h) top = keep
+            if (top >= h) {
+                val strip = maxOf(1, minOf(h, (w * 0.12f).toInt()))
+                val t = Bitmap.createBitmap(shot, 0, 0, w, strip)
+                if (t !== shot) shot.recycle()
+                shot = t
+            } else {
+                val y0 = maxOf(0, top - keep)
+                val y1 = minOf(h, bottom + 1 + keep)
+                if (y0 > 0 || y1 < h) {
+                    val t = Bitmap.createBitmap(shot, 0, y0, w, y1 - y0)
+                    if (t !== shot) shot.recycle()
+                    shot = t
+                }
+            }
+        }
+        val outW = shot.width
+        val outH = shot.height
+        FileOutputStream(File(outPath)).use { out -> shot.compress(Bitmap.CompressFormat.JPEG, 90, out) }
+        shot.recycle()
+        return intArrayOf(outW, outH)
+    }
+
     private fun findLargestWebView(root: View): WebView? {
         var best: WebView? = null
         fun walk(v: View) {
@@ -1506,14 +1793,49 @@ class MainActivity : FlutterActivity(), SensorEventListener {
     private fun pdfLines(path: String, from: Int, to: Int, withBold: Boolean): List<Map<String, Any>> {
         val out = ArrayList<Map<String, Any>>()
         val pfd = ParcelFileDescriptor.open(File(path), ParcelFileDescriptor.MODE_READ_ONLY)
-        fun collect(pw: Float, ph: Float, contents: List<android.graphics.pdf.content.PdfPageTextContent>, draw: ((Bitmap) -> Unit)?) {
+        fun collect(pw: Float, ph: Float, contents: List<android.graphics.pdf.content.PdfPageTextContent>, draw: ((Bitmap) -> Unit)?,
+                    search: (String) -> List<android.graphics.pdf.models.PageMatchBounds>) {
             // 글 조각들: 줄바꿈 수와 상자 수가 같으면 줄마다 짝짓고, 다르면 상자 너비에 비례해 글자를 나눠 담음
             val segs = ArrayList<Pair<String, android.graphics.RectF>>()
             if (pw > 0f && ph > 0f) {
                 for (c in contents) {
                     val text = c.text ?: continue
                     val rects = c.bounds.filter { it.width() > 0f && it.height() > 0f }
-                    if (rects.isEmpty() || text.isBlank()) continue
+                    if (text.isBlank()) continue
+                    if (rects.isEmpty()) {
+                        // 기기에 따라 쪽 글 전체만 주고 위치(상자)는 주지 않는다 → 줄마다 '쪽 안에서 찾기'로 위치를 얻음
+                        val seen = HashMap<String, Int>()
+                        val used = ArrayList<android.graphics.RectF>()
+                        var lastY = 0f
+                        var searched = 0
+                        for (raw in text.split(Regex("\r\n|\n|\r"))) {
+                            val line = raw.trim()
+                            if (line.isEmpty()) continue
+                            var box: android.graphics.RectF? = null
+                            if (line.length <= 120 && searched < 80) {
+                                searched++
+                                val k = seen[line] ?: 0
+                                seen[line] = k + 1
+                                try {
+                                    // 찾은 자리마다 한 줄 상자로 (줄이 바뀐 부분은 빼고)
+                                    val boxes = search(line).mapNotNull { m ->
+                                        val first = m.bounds.firstOrNull { it.width() > 0f && it.height() > 0f } ?: return@mapNotNull null
+                                        val u = android.graphics.RectF(first)
+                                        for (r in m.bounds) if (r.width() > 0f && r.height() > 0f && Math.abs(r.centerY() - u.centerY()) < u.height()) u.union(r)
+                                        u
+                                    }
+                                    // 이미 다른 줄이 차지한 자리 안(더 긴 줄 속 같은 글자)은 건너뜀
+                                    box = boxes.firstOrNull { b -> used.none { it.contains(b.centerX(), b.centerY()) } } ?: boxes.getOrNull(k) ?: boxes.firstOrNull()
+                                    box?.let { used.add(it) }
+                                } catch (_: Throwable) {}
+                            }
+                            // 위치를 못 찾은 줄은 앞 줄 바로 아래로 (글 복사에는 순서만 맞으면 됨)
+                            val r = box ?: android.graphics.RectF(0f, lastY + 0.01f, pw, lastY + 0.02f)
+                            lastY = r.bottom
+                            segs.add(line to r)
+                        }
+                        continue
+                    }
                     val parts = text.split(Regex("\r\n|\n|\r"))
                     if (parts.size == rects.size) {
                         for (k in rects.indices) if (parts[k].isNotBlank()) segs.add(parts[k] to rects[k])
@@ -1575,7 +1897,8 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                     for (i in maxOf(0, from) until minOf(renderer.pageCount, to)) {
                         renderer.openPage(i).use { pg ->
                             collect(pg.width.toFloat(), pg.height.toFloat(), pg.textContents,
-                                if (withBold) { b -> pg.render(b, null, android.graphics.Matrix().apply { setScale(b.width / pg.width.toFloat(), b.width / pg.width.toFloat()) }, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY) } else null)
+                                if (withBold) { b -> pg.render(b, null, android.graphics.Matrix().apply { setScale(b.width / pg.width.toFloat(), b.width / pg.width.toFloat()) }, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY) } else null,
+                                { q -> pg.searchText(q) })
                         }
                     }
                 }
@@ -1585,7 +1908,8 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                         renderer.openPage(i).use { pg ->
                             collect(pg.width.toFloat(), pg.height.toFloat(), pg.textContents,
                                 if (withBold) { b -> pg.render(b, null, android.graphics.Matrix().apply { setScale(b.width / pg.width.toFloat(), b.width / pg.width.toFloat()) },
-                                    android.graphics.pdf.RenderParams.Builder(android.graphics.pdf.RenderParams.RENDER_MODE_FOR_DISPLAY).build()) } else null)
+                                    android.graphics.pdf.RenderParams.Builder(android.graphics.pdf.RenderParams.RENDER_MODE_FOR_DISPLAY).build()) } else null,
+                                { q -> pg.searchText(q) })
                         }
                     }
                 }
@@ -1607,5 +1931,397 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             }
             if (rects.isNotEmpty()) out.add(mapOf("page" to pageIndex, "rects" to rects))
         }
+    }
+
+    // ── 문서 스캔 (카메라 촬영 + 스캔 필터 보정 + PDF 묶기) ──────────────────
+
+    private fun launchCameraForScan(result: MethodChannel.Result) {
+        if (pendingCameraResult != null) {
+            try { pendingCameraResult?.success(null) } catch (_: Exception) {}
+            pendingCameraResult = null
+        }
+        try {
+            val scanDir = File(cacheDir, "scan_photos")
+            if (!scanDir.exists()) scanDir.mkdirs()
+            val outFile = File(scanDir, "raw_${System.currentTimeMillis()}.jpg")
+            pendingCameraFile = outFile
+            pendingCameraResult = result
+
+            val authority = "${applicationContext.packageName}.scanprovider"
+            val uri = android.net.Uri.parse("content://$authority/scan_photos/${outFile.name}")
+            val intent = android.content.Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, uri)
+                clipData = android.content.ClipData.newRawUri("", uri)
+                addFlags(
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            startActivityForResult(intent, REQ_SCAN_CAMERA)
+        } catch (e: Throwable) {
+            pendingCameraResult = null
+            pendingCameraFile = null
+            result.error("CAMERA_ERR", e.message ?: "카메라를 실행할 수 없습니다.", null)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        if (requestCode == REQ_SCAN_CAMERA) {
+            val cb = pendingCameraResult
+            val file = pendingCameraFile
+            pendingCameraResult = null
+            pendingCameraFile = null
+            if (cb == null) return
+            if (resultCode != android.app.Activity.RESULT_OK) {
+                try { file?.delete() } catch (_: Exception) {}
+                cb.success(null)
+                return
+            }
+            thumbExecutor.execute {
+                try {
+                    val outFile = file ?: File(File(cacheDir, "scan_photos").apply { mkdirs() }, "raw_${System.currentTimeMillis()}.jpg")
+                    if (!outFile.exists() || outFile.length() == 0L) {
+                        val dataUri = data?.data
+                        if (dataUri != null) {
+                            contentResolver.openInputStream(dataUri)?.use { input ->
+                                FileOutputStream(outFile).use { output -> input.copyTo(output) }
+                            }
+                        } else {
+                            @Suppress("DEPRECATION")
+                            val thumb = data?.extras?.get("data") as? Bitmap
+                            if (thumb != null) {
+                                FileOutputStream(outFile).use { output ->
+                                    thumb.compress(Bitmap.CompressFormat.JPEG, 92, output)
+                                }
+                            }
+                        }
+                    }
+                    if (!outFile.exists() || outFile.length() == 0L) {
+                        runOnUiThread { cb.success(null) }
+                        return@execute
+                    }
+                    normalizeCameraImageFile(outFile, 2400)
+                    runOnUiThread { cb.success(outFile.absolutePath) }
+                } catch (e: Throwable) {
+                    runOnUiThread { cb.error("CAMERA_SAVE_ERR", e.message, null) }
+                }
+            }
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    private fun normalizeCameraImageFile(file: File, maxDim: Int) {
+        val exifDeg = try {
+            val exif = android.media.ExifInterface(file.absolutePath)
+            when (exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)) {
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                else -> 0
+            }
+        } catch (_: Throwable) { 0 }
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxDim * 2) {
+            sample *= 2
+        }
+        val decoded = BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return
+        val maxSide = maxOf(decoded.width, decoded.height)
+        val scale = if (maxSide > maxDim) maxDim.toFloat() / maxSide.toFloat() else 1f
+        if (exifDeg == 0 && scale >= 0.999f) {
+            decoded.recycle()
+            return
+        }
+        val m = android.graphics.Matrix()
+        if (scale < 0.999f) m.postScale(scale, scale)
+        if (exifDeg != 0) m.postRotate(exifDeg.toFloat())
+        val normalized = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, m, true)
+        if (normalized !== decoded) decoded.recycle()
+        FileOutputStream(file).use { out ->
+            normalized.compress(Bitmap.CompressFormat.JPEG, 92, out)
+        }
+        normalized.recycle()
+    }
+
+    /**
+     * 카메라로 찍은 문서 사진을 실제 스캔본처럼 보정한다.
+     * - 2차원 적분 영상(Integral Image)으로 지역 배경 밝기를 추정하여 조명 그림자·누런 종이 배경을 하얗게 제거하고 글자 획을 선명하게 강조한다.
+     */
+    private fun processDocumentScanBitmap(
+        inputPath: String,
+        outputPath: String,
+        mode: String,
+        contrast: Float,
+        rotation: Int,
+        crop: List<Number>?,
+        maxDim: Int
+    ): String {
+        val srcFile = File(inputPath)
+        if (!srcFile.exists()) throw IllegalStateException("원본 이미지가 없습니다.")
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(inputPath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IllegalStateException("이미지를 읽을 수 없습니다.")
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxDim * 2) {
+            sample *= 2
+        }
+        var bmp = BitmapFactory.decodeFile(inputPath, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: throw IllegalStateException("이미지 디코딩 실패")
+
+        // 1. 회전 적용 (0, 90, 180, 270)
+        val rot = ((rotation % 360) + 360) % 360
+        if (rot != 0) {
+            val m = android.graphics.Matrix().apply { postRotate(rot.toFloat()) }
+            val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
+            if (rotated !== bmp) bmp.recycle()
+            bmp = rotated
+        }
+
+        // 2. 자르기 영역 적용 (crop = [left, top, right, bottom], 0.0~1.0)
+        if (crop != null && crop.size == 4) {
+            val l = crop[0].toFloat().coerceIn(0f, 0.95f)
+            val t = crop[1].toFloat().coerceIn(0f, 0.95f)
+            val r = crop[2].toFloat().coerceIn(l + 0.05f, 1f)
+            val b = crop[3].toFloat().coerceIn(t + 0.05f, 1f)
+            if (l > 0.005f || t > 0.005f || r < 0.995f || b < 0.995f) {
+                val cx = (l * bmp.width).toInt().coerceIn(0, bmp.width - 1)
+                val cy = (t * bmp.height).toInt().coerceIn(0, bmp.height - 1)
+                val cw = ((r - l) * bmp.width).toInt().coerceIn(1, bmp.width - cx)
+                val ch = ((b - t) * bmp.height).toInt().coerceIn(1, bmp.height - cy)
+                val cropped = Bitmap.createBitmap(bmp, cx, cy, cw, ch)
+                if (cropped !== bmp) bmp.recycle()
+                bmp = cropped
+            }
+        }
+
+        // 3. 최대 해상도 제한
+        val longest = maxOf(bmp.width, bmp.height)
+        if (longest > maxDim) {
+            val scale = maxDim.toFloat() / longest.toFloat()
+            val sw = maxOf(1, (bmp.width * scale).toInt())
+            val sh = maxOf(1, (bmp.height * scale).toInt())
+            val scaled = Bitmap.createScaledBitmap(bmp, sw, sh, true)
+            if (scaled !== bmp) bmp.recycle()
+            bmp = scaled
+        }
+
+        // 4. 스캔 필터 적용
+        if (mode != "original") {
+            val w = bmp.width
+            val h = bmp.height
+            val pixels = IntArray(w * h)
+            bmp.getPixels(pixels, 0, w, 0, 0, w, h)
+
+            val lum = IntArray(w * h)
+            val stride = w + 1
+            val integral = LongArray((w + 1) * (h + 1))
+
+            for (y in 0 until h) {
+                var rowSum = 0L
+                val rowOffset = y * w
+                val intRow = (y + 1) * stride
+                val intPrevRow = y * stride
+                for (x in 0 until w) {
+                    val c = pixels[rowOffset + x]
+                    val r = (c shr 16) and 0xFF
+                    val g = (c shr 8) and 0xFF
+                    val b = c and 0xFF
+                    val l = (r * 77 + g * 150 + b * 29) shr 8
+                    lum[rowOffset + x] = l
+                    rowSum += l
+                    integral[intRow + x + 1] = integral[intPrevRow + x + 1] + rowSum
+                }
+            }
+
+            val rad = maxOf(18, minOf(w, h) / 14)
+            // contrast(0..1): 높을수록 글자가 더 진해지고 배경이 더 강하게 하얘짐
+            val paperWhiteFloor = (232 - (contrast * 28f)).toInt().coerceIn(195, 242)
+            val inkDarkCeil = (95 + (contrast * 70f)).toInt().coerceIn(80, 175)
+            val span = maxOf(1, paperWhiteFloor - inkDarkCeil)
+
+            for (y in 0 until h) {
+                val y0 = maxOf(0, y - rad)
+                val y1 = minOf(h - 1, y + rad)
+                val r0 = y0 * stride
+                val r1 = (y1 + 1) * stride
+                val rowOffset = y * w
+                for (x in 0 until w) {
+                    val x0 = maxOf(0, x - rad)
+                    val x1 = minOf(w - 1, x + rad)
+                    val count = (x1 - x0 + 1) * (y1 - y0 + 1)
+                    val sum = integral[r1 + x1 + 1] - integral[r0 + x1 + 1] - integral[r1 + x0] + integral[r0 + x0]
+                    val localBg = maxOf(45, (sum / count).toInt())
+
+                    val idx = rowOffset + x
+                    val l = lum[idx]
+                    // 지역 배경 대비 상대 밝기 (0~255)
+                    val rel = ((l * 255) / localBg).coerceIn(0, 255)
+
+                    when (mode) {
+                        "scan_bw" -> {
+                            // 스캔본 (선명한 흑백 문서): 배경 그림자는 순백색(255)으로 날리고 글자 획은 선명하고 진하게
+                            val v = when {
+                                rel >= paperWhiteFloor -> 255
+                                rel <= inkDarkCeil -> (rel * 35 / maxOf(1, inkDarkCeil)).coerceIn(0, 35)
+                                else -> {
+                                    val t = (rel - inkDarkCeil).toFloat() / span.toFloat()
+                                    // 부드러운 S-커브로 글자 가장자리 깨짐 방지
+                                    val smooth = t * t * (3f - 2f * t)
+                                    (35f + smooth * 220f).toInt().coerceIn(0, 255)
+                                }
+                            }
+                            pixels[idx] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+                        }
+                        "scan_gray" -> {
+                            // 회색조 스캔 (그림·도표가 있는 문서용): 그림자만 제거하고 부드러운 회색조 유지
+                            val whitePt = (240 - (contrast * 18f)).toInt().coerceIn(215, 245)
+                            val blackPt = (40 + (contrast * 40f)).toInt().coerceIn(30, 90)
+                            val v = when {
+                                rel >= whitePt -> 255
+                                rel <= blackPt -> 0
+                                else -> ((rel - blackPt) * 255 / maxOf(1, whitePt - blackPt)).coerceIn(0, 255)
+                            }
+                            pixels[idx] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+                        }
+                        "scan_color" -> {
+                            // 컬러 스캔: 종이 배경 그림자는 순백색으로 만들고 색깔 있는 글씨·형광펜·도장은 선명하게 보존
+                            val c = pixels[idx]
+                            val r = (c shr 16) and 0xFF
+                            val g = (c shr 8) and 0xFF
+                            val b = c and 0xFF
+                            val maxCh = maxOf(r, maxOf(g, b))
+                            val minCh = minOf(r, minOf(g, b))
+                            val sat = maxCh - minCh
+
+                            if (rel >= paperWhiteFloor && sat < 36) {
+                                pixels[idx] = 0xFFFFFFFF.toInt()
+                            } else {
+                                val nr = ((r * 255) / localBg).coerceIn(0, 255)
+                                val ng = ((g * 255) / localBg).coerceIn(0, 255)
+                                val nb = ((b * 255) / localBg).coerceIn(0, 255)
+                                val gain = 1.15f + contrast * 0.35f
+                                val fr = (255f - (255 - nr) * gain).toInt().coerceIn(0, 255)
+                                val fg = (255f - (255 - ng) * gain).toInt().coerceIn(0, 255)
+                                val fb = (255f - (255 - nb) * gain).toInt().coerceIn(0, 255)
+                                pixels[idx] = (0xFF shl 24) or (fr shl 16) or (fg shl 8) or fb
+                            }
+                        }
+                    }
+                }
+            }
+            val outBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            outBmp.setPixels(pixels, 0, w, 0, 0, w, h)
+            bmp.recycle()
+            bmp = outBmp
+        }
+
+        val outFile = File(outputPath)
+        outFile.parentFile?.mkdirs()
+        FileOutputStream(outFile).use { out ->
+            bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
+        }
+        bmp.recycle()
+        return outFile.absolutePath
+    }
+
+    private fun buildScannedPdfFromImages(imagePaths: List<String>, outputPath: String): String {
+        val doc = PdfDocument()
+        try {
+            val total = imagePaths.size
+            val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+            for ((idx, path) in imagePaths.withIndex()) {
+                val f = File(path)
+                if (!f.exists()) continue
+                val cur = idx + 1
+                mainHandler.post {
+                    try {
+                        pdfMethodChannel?.invokeMethod(
+                            "onScanPdfProgress",
+                            mapOf("current" to cur, "total" to total)
+                        )
+                    } catch (_: Exception) {}
+                }
+                val bmp = decodePageBitmap(path) ?: continue
+                // A4 비율에 가까운 고해상도 페이지 폭(1440px 기준)으로 정규화하여 저장
+                val targetW = 1440
+                val scale = targetW.toFloat() / bmp.width.toFloat().coerceAtLeast(1f)
+                val pageW = targetW
+                val pageH = (bmp.height * scale).toInt().coerceAtLeast(400)
+
+                val pageInfo = PdfDocument.PageInfo.Builder(pageW, pageH, cur).create()
+                val page = doc.startPage(pageInfo)
+                val canvas = page.canvas
+                canvas.drawColor(Color.WHITE)
+                val dstRect = RectF(0f, 0f, pageW.toFloat(), pageH.toFloat())
+                canvas.drawBitmap(bmp, null, dstRect, paint)
+                doc.finishPage(page)
+                bmp.recycle()
+            }
+            val outFile = File(outputPath)
+            outFile.parentFile?.mkdirs()
+            FileOutputStream(outFile).use { outStream ->
+                doc.writeTo(outStream)
+            }
+            return outFile.absolutePath
+        } finally {
+            try { doc.close() } catch (_: Exception) {}
+        }
+    }
+}
+
+class ScanFileProvider : android.content.ContentProvider() {
+    override fun onCreate(): Boolean = true
+
+    private fun resolveScanFile(uri: android.net.Uri): File {
+        val ctx = context ?: throw java.io.FileNotFoundException("No context")
+        val segs = uri.pathSegments
+        if (segs.size < 2 || segs[0] != "scan_photos") {
+            throw java.io.FileNotFoundException("Invalid scan uri: $uri")
+        }
+        val safeName = File(segs[1]).name
+        val dir = File(ctx.cacheDir, "scan_photos")
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, safeName)
+    }
+
+    override fun query(
+        uri: android.net.Uri,
+        projection: Array<out String>?,
+        selection: String?,
+        selectionArgs: Array<out String>?,
+        sortOrder: String?
+    ): android.database.Cursor {
+        val f = resolveScanFile(uri)
+        val cols = projection ?: arrayOf(
+            android.provider.OpenableColumns.DISPLAY_NAME,
+            android.provider.OpenableColumns.SIZE
+        )
+        val row = Array<Any?>(cols.size) { i ->
+            when (cols[i]) {
+                android.provider.OpenableColumns.DISPLAY_NAME -> f.name
+                android.provider.OpenableColumns.SIZE -> f.length()
+                else -> null
+            }
+        }
+        return android.database.MatrixCursor(cols, 1).apply { addRow(row) }
+    }
+
+    override fun getType(uri: android.net.Uri): String = "image/jpeg"
+    override fun insert(uri: android.net.Uri, values: ContentValues?): android.net.Uri? = null
+    override fun delete(uri: android.net.Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    override fun update(uri: android.net.Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
+
+    override fun openFile(uri: android.net.Uri, mode: String): ParcelFileDescriptor? {
+        val f = resolveScanFile(uri)
+        if (!f.exists() && mode.contains("w")) {
+            f.parentFile?.mkdirs()
+            f.createNewFile()
+        }
+        return ParcelFileDescriptor.open(f, ParcelFileDescriptor.parseMode(mode))
     }
 }
