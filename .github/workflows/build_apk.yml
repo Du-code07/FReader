@@ -141,11 +141,15 @@ jobs:
             if ! grep -q 'android.permission.POST_NOTIFICATIONS' "$MANIFEST"; then
               sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
             fi
+            if ! grep -q 'android.permission.CAMERA' "$MANIFEST"; then
+              sed -i '/<application/i\    <uses-permission android:name="android.permission.CAMERA"/>' "$MANIFEST"
+              sed -i '/<application/i\    <uses-feature android:name="android.hardware.camera" android:required="false"/>' "$MANIFEST"
+            fi
             if ! grep -q 'android.media.action.IMAGE_CAPTURE' "$MANIFEST"; then
               sed -i '/<application/i\    <queries><intent><action android:name="android.media.action.IMAGE_CAPTURE"/></intent></queries>' "$MANIFEST"
             fi
             if ! grep -q 'com.freader.my_ebook_reader.scanprovider' "$MANIFEST"; then
-              sed -i 's/<\/application>/<provider android:name=".ScanFileProvider" android:authorities="com.freader.my_ebook_reader.scanprovider" android:exported="false" android:grantUriPermissions="true"\/><\/application>/' "$MANIFEST"
+              sed -i 's/<\/application>/<activity android:name=".DocumentCameraActivity" android:screenOrientation="portrait" android:theme="@android:style\/Theme.Black.NoTitleBar.Fullscreen" android:exported="false"\/><provider android:name=".ScanFileProvider" android:authorities="com.freader.my_ebook_reader.scanprovider" android:exported="false" android:grantUriPermissions="true"\/><\/application>/' "$MANIFEST"
             fi
             if ! grep -q "com.samsung.android.support.REMOTE_ACTION" "$MANIFEST"; then
               sed -i 's/<\/activity>/<property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true"\/><property android:name="android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE" android:value="false"\/><property android:name="android.window.PROPERTY_COMPAT_IGNORE_REQUESTED_ORIENTATION" android:value="false"\/><intent-filter><action android:name="com.samsung.android.support.REMOTE_ACTION"\/><\/intent-filter><meta-data android:name="com.samsung.android.support.REMOTE_ACTION" android:resource="@xml\/remote_action"\/><\/activity>/' "$MANIFEST"
