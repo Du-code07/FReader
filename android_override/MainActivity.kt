@@ -2059,11 +2059,11 @@ class MainActivity : FlutterActivity(), SensorEventListener {
     }
 
     /**
-     * 초고화질 문서·필기·책 글자 선명화 스캔 파이프라인 (v101):
+     * 초고화질 문서·필기·책 글자 선명화 스캔 파이프라인 (v102):
      * 1) OpenCV Bicubic(INTER_CUBIC) 4점 원근 투시 변환 및 서브픽셀 업스케일링 (작은 손글씨·발음기호 해상력 극대화)
-     * 2) 가장자리 손가락 지우기 + 종이 바깥쪽 검은 책상 그림자(테두리 암부) 자동 클리닝
-     * 3) 90퍼센타일 블록 조명 추출 + 5x5 모폴로지 팽창 + 5x5 가우시안 스무딩으로 그림자만 순백색(#FFFFFF)으로 제거
-     * 4) 등방성 3x3 가우시안 언샤프 마스크(노이즈 코어링 포함) + 안티앨리어싱 보존 S-커브 LUT로
+     * 2) 배경 조명 맵(bgGrid) 오염을 일으키던 사전 테두리 덧칠을 제거하고, 원본 밝기에서 직접 3x3 모폴로지 조명 맵을 추출하여
+     *    좌하단 등 어두운 그림자 영역(lum ~ 90)도 단차나 얼룩 없이 100% 순백색(#FFFFFF)으로 자연스럽게 평탄화
+     * 3) 등방성 3x3 가우시안 언샤프 마스크(노이즈 코어링 포함) + 안티앨리어싱 보존 S-커브 LUT로
      *    획 뭉개짐·번짐 없이 타 스캔 앱(vFlat/CamScanner) 수준의 얇고 또렷한 글자 획 복원
      */
     private fun processDocumentScanBitmap(
@@ -2152,19 +2152,13 @@ class MainActivity : FlutterActivity(), SensorEventListener {
         val pixels = IntArray(w * h)
         bmp.getPixels(pixels, 0, w, 0, 0, w, h)
 
-        // 4. 가장자리 손가락 지우기 및 테두리 바깥 책상 검은 그림자 정리
-        if (w >= 80 && h >= 80) {
-            if (eraseFingers) {
-                eraseEdgeFingersInPlace(pixels, w, h)
-            }
-            if (mode != "original") {
-                cleanOuterBorderShadowInPlace(pixels, w, h)
-            }
-        }
-
-        // 5. 정밀 모폴로지 배경 조명 분리 + 3x3 등방성 가우시안 샤프닝 + 안티앨리어싱 S-커브 적용
+        // 4. 정밀 모폴로지 배경 조명 분리 + 3x3 등방성 가우시안 샤프닝 + 안티앨리어싱 S-커브 적용
+        //    (주의: bgGrid 조명 계산 전에 가장자리 픽셀을 인위적으로 칠하면 좌하단 그림자 경계에 L자 단차가 생기므로
+        //     반드시 원본 픽셀 그대로 조명 정규화를 먼저 수행한다!)
         if (mode != "original") {
-            enhanceDocumentPixelsHighQuality(pixels, w, h, mode, contrast)
+            enhanceDocumentPixelsHighQuality(pixels, w, h, mode, contrast, eraseFingers)
+        } else if (eraseFingers && w >= 80 && h >= 80) {
+            eraseEdgeFingersInPlace(pixels, w, h)
         }
 
         // 항상 새 Mutable Bitmap에 픽셀을 기록하여 Immutable Bitmap 예외 및 검은 이미지 현상 원천 차단
@@ -2212,7 +2206,6 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             dstW *= s
             dstH *= s
         } else if (maxDim >= 2000 && longest < 2200f) {
-            // 원근 변환 단계에서 바로 고해상도(2200px 급) 격자로 Bicubic 투영하여 리샘플링 손실 최소화
             val s = minOf(maxDim.toFloat(), 2300f) / longest
             dstW *= s
             dstH *= s
@@ -2220,7 +2213,6 @@ class MainActivity : FlutterActivity(), SensorEventListener {
         val iw = dstW.toInt().coerceAtLeast(120)
         val ih = dstH.toInt().coerceAtLeast(120)
 
-        // OpenCV INTER_CUBIC 원근 보정 우선 수행
         OpenCvScanEngine.warpPerspectiveCubic(src, srcPts, iw, ih)?.let { cubicOut ->
             if (cubicOut !== src) src.recycle()
             return cubicOut
@@ -2250,103 +2242,9 @@ class MainActivity : FlutterActivity(), SensorEventListener {
     }
 
     /**
-     * 종이 가장자리 바깥쪽(좌·우·하단 4.5% 이내)에 책상 배경이나 어두운 테두리가 살짝 딸려 들어온 경우,
-     * 이미지 최외곽 경계(x=0, x=w-1, y=h-1)와 직접 연결된 어두운 배경 띠만 종이 색으로 깔끔하게 지운다.
-     * (노트 상단의 스프링 링은 보존하기 위해 좌·우·하단 경계만 정리)
-     */
-    private fun cleanOuterBorderShadowInPlace(pixels: IntArray, w: Int, h: Int) {
-        val hist = IntArray(256)
-        val stepY = maxOf(1, h / 60)
-        val stepX = maxOf(1, w / 60)
-        var sumR = 0L; var sumG = 0L; var sumB = 0L; var cnt = 0L
-        for (y in (h / 6) until (h * 5 / 6) step stepY) {
-            val row = y * w
-            for (x in (w / 6) until (w * 5 / 6) step stepX) {
-                val c = pixels[row + x]
-                val r = (c shr 16) and 0xFF
-                val g = (c shr 8) and 0xFF
-                val b = c and 0xFF
-                val l = (r * 77 + g * 150 + b * 29) shr 8
-                hist[l]++
-                if (l >= 145) {
-                    sumR += r; sumG += g; sumB += b; cnt++
-                }
-            }
-        }
-        var acc = 0
-        val totalSamples = hist.sum().coerceAtLeast(1)
-        var p80 = 190
-        for (i in 0..255) {
-            acc += hist[i]
-            if (acc >= (totalSamples * 80) / 100) {
-                p80 = i
-                break
-            }
-        }
-        val paperR = if (cnt > 0) (sumR / cnt).toInt().coerceIn(210, 255) else 248
-        val paperG = if (cnt > 0) (sumG / cnt).toInt().coerceIn(210, 255) else 248
-        val paperB = if (cnt > 0) (sumB / cnt).toInt().coerceIn(210, 255) else 248
-        val paperColor = (0xFF shl 24) or (paperR shl 16) or (paperG shl 8) or paperB
-
-        val darkOuterLimit = (p80 * 74) / 100
-        val paperStopLimit = (p80 * 88) / 100
-        val maxMarginX = (w * 0.048f).toInt().coerceIn(4, 140)
-        val maxMarginY = (h * 0.042f).toInt().coerceIn(4, 120)
-
-        fun lumOf(c: Int): Int {
-            val r = (c shr 16) and 0xFF
-            val g = (c shr 8) and 0xFF
-            val b = c and 0xFF
-            return (r * 77 + g * 150 + b * 29) shr 8
-        }
-
-        // 좌측 및 우측 경계와 맞닿은 어두운 책상 쐐기 제거
-        for (y in 0 until h) {
-            val row = y * w
-            if (lumOf(pixels[row]) < darkOuterLimit) {
-                var x = 0
-                while (x < maxMarginX && lumOf(pixels[row + x]) < paperStopLimit) {
-                    pixels[row + x] = paperColor
-                    x++
-                }
-                if (x in 1 until maxMarginX) {
-                    for (f in 0..1) {
-                        if (x + f < w) pixels[row + x + f] = paperColor
-                    }
-                }
-            }
-            if (lumOf(pixels[row + w - 1]) < darkOuterLimit) {
-                var x = w - 1
-                val minX = w - 1 - maxMarginX
-                while (x > minX && lumOf(pixels[row + x]) < paperStopLimit) {
-                    pixels[row + x] = paperColor
-                    x--
-                }
-                if (x < w - 1 && x > minX) {
-                    for (f in 0..1) {
-                        if (x - f >= 0) pixels[row + x - f] = paperColor
-                    }
-                }
-            }
-        }
-
-        // 하단 경계와 맞닿은 어두운 책상 그림자 제거
-        for (x in 0 until w) {
-            if (lumOf(pixels[(h - 1) * w + x]) < darkOuterLimit) {
-                var y = h - 1
-                val minY = h - 1 - maxMarginY
-                while (y > minY && lumOf(pixels[y * w + x]) < paperStopLimit) {
-                    pixels[y * w + x] = paperColor
-                    y--
-                }
-            }
-        }
-    }
-
-    /**
-     * 책·노트 필기·인쇄 글자 가독성 극대화 알고리즘 (v101):
-     * 1) 블록 상위 밝기(종이 바탕) 추출 + 5x5 모폴로지 팽창 + 글로벌 종이 하한 보정 + 5x5 가우시안 스무딩으로
-     *    손/휴대폰 그림자와 조명 얼룩을 완벽히 평탄화한다.
+     * 책·노트 필기·인쇄 글자 가독성 극대화 알고리즘 (v102):
+     * 1) 사전 테두리 변형 없이 순수 원본 밝기에서 블록 상위 밝기(88퍼센타일 수준) + 3x3 모폴로지 팽창 + 3x3 스무딩으로
+     *    좌하단 등 짙은 그림자 영역(lum ~ 90)까지 단차 없이 100% 매끄럽게 추적한다.
      * 2) 조명 정규화된 반사율(normLum) 위에서 등방성 3x3 가우시안 언샤프 마스크(노이즈 코어링 포함)를 적용하여
      *    글자 획 두께를 부풀리지 않고 중심 선예도만 또렷하게 살린다.
      * 3) 안티앨리어싱 계조 보존형 S-커브 LUT(inkDarkCeil ~ 75, paperWhiteFloor ~ 223)를 적용하여
@@ -2357,35 +2255,24 @@ class MainActivity : FlutterActivity(), SensorEventListener {
         w: Int,
         h: Int,
         mode: String,
-        contrast: Float
+        contrast: Float,
+        eraseFingers: Boolean
     ) {
         val total = w * h
         val rawLum = IntArray(total)
-        val hist = IntArray(256)
         for (i in 0 until total) {
             val c = pixels[i]
             val r = (c shr 16) and 0xFF
             val g = (c shr 8) and 0xFF
             val b = c and 0xFF
-            val l = (r * 77 + g * 150 + b * 29) shr 8
-            rawLum[i] = l
-            hist[l]++
+            rawLum[i] = (r * 77 + g * 150 + b * 29) shr 8
         }
 
-        var acc = 0
-        var globalPaper85 = 200
-        val target85 = (total * 85L) / 100L
-        for (i in 0..255) {
-            acc += hist[i]
-            if (acc >= target85) {
-                globalPaper85 = i
-                break
-            }
-        }
-        val minBgFloor = maxOf(68, (globalPaper85 * 68) / 100)
+        // 짙은 손/휴대폰 그림자(밝기 85~120)도 회색 얼룩 없이 255 순백색으로 정규화되도록 하한을 48로 설정
+        val minBgFloor = 48
 
-        // 1. 모폴로지 배경 조명 그리드 생성
-        val step = maxOf(10, minOf(w, h) / 85)
+        // 1. 모폴로지 배경 조명 그리드 생성 (셀 크기 step = min(w,h) / 75)
+        val step = maxOf(8, minOf(w, h) / 75)
         val gw = (w + step - 1) / step
         val gh = (h + step - 1) / step
         val gridMax = IntArray(gw * gh)
@@ -2417,14 +2304,14 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             }
         }
 
-        // 5x5 모폴로지 팽창 (두꺼운 도표·스프링 링·큰 글씨 내부도 주변 종이 밝기로 완벽히 메움)
+        // 3x3 모폴로지 팽창 (급격한 그림자 경계에서도 L자 단차나 후광이 생기지 않도록 국소 종이 밝기 추적)
         val gridDilated = IntArray(gw * gh)
         for (gy in 0 until gh) {
-            val r0 = maxOf(0, gy - 2)
-            val r1 = minOf(gh - 1, gy + 2)
+            val r0 = maxOf(0, gy - 1)
+            val r1 = minOf(gh - 1, gy + 1)
             for (gx in 0 until gw) {
-                val c0 = maxOf(0, gx - 2)
-                val c1 = minOf(gw - 1, gx + 2)
+                val c0 = maxOf(0, gx - 1)
+                val c1 = minOf(gw - 1, gx + 1)
                 var m = minBgFloor
                 for (yy in r0..r1) {
                     val ro = yy * gw
@@ -2436,21 +2323,21 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             }
         }
 
-        // 5x5 스무딩으로 그림자 경계 제거
+        // 3x3 가중 스무딩으로 조명 경계를 매끄럽게 연결
         val bgGrid = IntArray(gw * gh)
         for (gy in 0 until gh) {
-            val r0 = maxOf(0, gy - 2)
-            val r1 = minOf(gh - 1, gy + 2)
+            val r0 = maxOf(0, gy - 1)
+            val r1 = minOf(gh - 1, gy + 1)
             for (gx in 0 until gw) {
-                val c0 = maxOf(0, gx - 2)
-                val c1 = minOf(gw - 1, gx + 2)
+                val c0 = maxOf(0, gx - 1)
+                val c1 = minOf(gw - 1, gx + 1)
                 var sum = 0
                 var wSum = 0
                 for (yy in r0..r1) {
-                    val wy = 3 - kotlin.math.abs(yy - gy)
+                    val wy = 2 - kotlin.math.abs(yy - gy)
                     val ro = yy * gw
                     for (xx in c0..c1) {
-                        val wx = 3 - kotlin.math.abs(xx - gx)
+                        val wx = 2 - kotlin.math.abs(xx - gx)
                         val wt = wy * wx
                         sum += gridDilated[ro + xx] * wt
                         wSum += wt
@@ -2512,7 +2399,6 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                     normLum[idx + w - 1] + (normLum[idx + w] shl 1) + normLum[idx + w + 1]
                 ) shr 4
                 val diff = c - blur
-                // |diff| <= 3인 미세 노이즈는 무시하고, 실제 글자 획 경계만 정밀하게 선명화
                 val boosted = if (diff in -3..3) c else (c + (diff * 7) / 8).coerceIn(0, 255)
                 sharpRel[idx] = boosted
             }
@@ -2537,91 +2423,99 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             }
         }
 
-        // 5. 모드별 최종 픽셀 합성
-        for (idx in 0 until total) {
-            val rel = sharpRel[idx]
-            val localBg = localBgArr[idx]
-            when (mode) {
-                "magic" -> {
-                    val c = pixels[idx]
-                    val r = (c shr 16) and 0xFF
-                    val g = (c shr 8) and 0xFF
-                    val b = c and 0xFF
-                    val sat = maxOf(r, maxOf(g, b)) - minOf(r, minOf(g, b))
+        val fingerMarginX = (w * 0.055f).toInt().coerceAtLeast(4)
+        val fingerMarginBottom = (h * 0.055f).toInt().coerceAtLeast(4)
 
-                    if (sat < 42) {
-                        val v = lut[rel]
-                        pixels[idx] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
-                    } else if (rel >= paperWhiteFloor && sat < 54) {
-                        pixels[idx] = 0xFFFFFFFF.toInt()
-                    } else {
-                        val targetLum = lut[rel]
-                        val curLum = maxOf(1, rawLum[idx])
-                        val scale = (targetLum * 256) / curLum
-                        val fr = ((r * scale) shr 8).coerceIn(0, 255)
-                        val fg = ((g * scale) shr 8).coerceIn(0, 255)
-                        val fb = ((b * scale) shr 8).coerceIn(0, 255)
-                        pixels[idx] = (0xFF shl 24) or (fr shl 16) or (fg shl 8) or fb
+        // 5. 모드별 최종 픽셀 합성 (손가락 지우기는 조명 계산 이후에 고채도 피부색만 순백색 처리하여 단차 원천 방지)
+        for (y in 0 until h) {
+            val rowOffset = y * w
+            val inBottomEdge = y >= h - fingerMarginBottom
+            for (x in 0 until w) {
+                val idx = rowOffset + x
+                val c = pixels[idx]
+                val r = (c shr 16) and 0xFF
+                val g = (c shr 8) and 0xFF
+                val b = c and 0xFF
+                val maxC = maxOf(r, maxOf(g, b))
+                val minC = minOf(r, minOf(g, b))
+                val sat = maxC - minC
+
+                if (eraseFingers && (x < fingerMarginX || x >= w - fingerMarginX || inBottomEdge)) {
+                    // 채도가 뚜렷한 실제 손가락 피부색(R > G > B, sat > 38)만 제거하고 회색/황색 종이 그림자는 건드리지 않음
+                    if (r > 115 && g > 55 && b > 35 && sat > 38 && (r - g) > 22 && g >= b && (r + g + b) in 220..640) {
+                        pixels[idx] = if (mode == "invert") 0xFF141414.toInt() else 0xFFFFFFFF.toInt()
+                        continue
                     }
                 }
-                "noshadow" -> {
-                    val c = pixels[idx]
-                    val r = (c shr 16) and 0xFF
-                    val g = (c shr 8) and 0xFF
-                    val b = c and 0xFF
-                    val sat = maxOf(r, maxOf(g, b)) - minOf(r, minOf(g, b))
-                    val softFloor = (236 - (contrast * 14f)).toInt().coerceIn(216, 244)
-                    val softCeil = (48 + (contrast * 28f)).toInt().coerceIn(38, 92)
-                    if (sat < 38) {
-                        val v = when {
-                            rel >= softFloor -> 255
-                            rel <= softCeil -> (rel * 26 / maxOf(1, softCeil)).coerceIn(0, 26)
-                            else -> {
-                                val t = (rel - softCeil).toFloat() / maxOf(1, softFloor - softCeil).toFloat()
-                                (26f + t * 229f).toInt().coerceIn(0, 255)
+
+                val rel = sharpRel[idx]
+                val localBg = localBgArr[idx]
+                when (mode) {
+                    "magic" -> {
+                        if (sat < 42) {
+                            val v = lut[rel]
+                            pixels[idx] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+                        } else if (rel >= paperWhiteFloor && sat < 54) {
+                            pixels[idx] = 0xFFFFFFFF.toInt()
+                        } else {
+                            val targetLum = lut[rel]
+                            val curLum = maxOf(1, rawLum[idx])
+                            val scale = (targetLum * 256) / curLum
+                            val fr = ((r * scale) shr 8).coerceIn(0, 255)
+                            val fg = ((g * scale) shr 8).coerceIn(0, 255)
+                            val fb = ((b * scale) shr 8).coerceIn(0, 255)
+                            pixels[idx] = (0xFF shl 24) or (fr shl 16) or (fg shl 8) or fb
+                        }
+                    }
+                    "noshadow" -> {
+                        val softFloor = (236 - (contrast * 14f)).toInt().coerceIn(216, 244)
+                        val softCeil = (48 + (contrast * 28f)).toInt().coerceIn(38, 92)
+                        if (sat < 38) {
+                            val v = when {
+                                rel >= softFloor -> 255
+                                rel <= softCeil -> (rel * 26 / maxOf(1, softCeil)).coerceIn(0, 26)
+                                else -> {
+                                    val t = (rel - softCeil).toFloat() / maxOf(1, softFloor - softCeil).toFloat()
+                                    (26f + t * 229f).toInt().coerceIn(0, 255)
+                                }
                             }
+                            pixels[idx] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+                        } else {
+                            val nr = ((r * 255) / localBg).coerceIn(0, 255)
+                            val ng = ((g * 255) / localBg).coerceIn(0, 255)
+                            val nb = ((b * 255) / localBg).coerceIn(0, 255)
+                            pixels[idx] = (0xFF shl 24) or (nr shl 16) or (ng shl 8) or nb
+                        }
+                    }
+                    "brighten" -> {
+                        val boost = (localBg * 3 + 255 * 2) / 5
+                        val br = ((r * 255) / maxOf(80, boost)).coerceIn(0, 255)
+                        val bg = ((g * 255) / maxOf(80, boost)).coerceIn(0, 255)
+                        val bb = ((b * 255) / maxOf(80, boost)).coerceIn(0, 255)
+                        pixels[idx] = (0xFF shl 24) or (br shl 16) or (bg shl 8) or bb
+                    }
+                    "scan_bw" -> {
+                        val bwCenter = (168 + ((contrast - 0.5f) * 44f)).toInt().coerceIn(130, 205)
+                        val v = when {
+                            rel >= bwCenter + 18 -> 255
+                            rel <= bwCenter - 18 -> 0
+                            else -> ((rel - (bwCenter - 18)) * 255 / 36).coerceIn(0, 255)
                         }
                         pixels[idx] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
-                    } else {
-                        val nr = ((r * 255) / localBg).coerceIn(0, 255)
-                        val ng = ((g * 255) / localBg).coerceIn(0, 255)
-                        val nb = ((b * 255) / localBg).coerceIn(0, 255)
-                        pixels[idx] = (0xFF shl 24) or (nr shl 16) or (ng shl 8) or nb
                     }
-                }
-                "brighten" -> {
-                    val c = pixels[idx]
-                    val r = (c shr 16) and 0xFF
-                    val g = (c shr 8) and 0xFF
-                    val b = c and 0xFF
-                    val boost = (localBg * 3 + 255 * 2) / 5
-                    val br = ((r * 255) / maxOf(80, boost)).coerceIn(0, 255)
-                    val bg = ((g * 255) / maxOf(80, boost)).coerceIn(0, 255)
-                    val bb = ((b * 255) / maxOf(80, boost)).coerceIn(0, 255)
-                    pixels[idx] = (0xFF shl 24) or (br shl 16) or (bg shl 8) or bb
-                }
-                "scan_bw" -> {
-                    // 흑백 모드에서도 글자 획 가장자리에 ±18 폭의 부드러운 안티앨리어싱 전이 구간을 두어 계단 현상 방지
-                    val bwCenter = (168 + ((contrast - 0.5f) * 44f)).toInt().coerceIn(130, 205)
-                    val v = when {
-                        rel >= bwCenter + 18 -> 255
-                        rel <= bwCenter - 18 -> 0
-                        else -> ((rel - (bwCenter - 18)) * 255 / 36).coerceIn(0, 255)
+                    "invert" -> {
+                        val v = lut[rel]
+                        val inv = (255 - v).coerceIn(18, 250)
+                        pixels[idx] = (0xFF shl 24) or (inv shl 16) or (inv shl 8) or inv
                     }
-                    pixels[idx] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
-                }
-                "invert" -> {
-                    val v = lut[rel]
-                    val inv = (255 - v).coerceIn(18, 250)
-                    pixels[idx] = (0xFF shl 24) or (inv shl 16) or (inv shl 8) or inv
                 }
             }
         }
     }
 
     private fun eraseEdgeFingersInPlace(pixels: IntArray, w: Int, h: Int) {
-        val marginX = (w * 0.075f).toInt().coerceAtLeast(6)
-        val marginBottom = (h * 0.075f).toInt().coerceAtLeast(6)
+        val marginX = (w * 0.055f).toInt().coerceAtLeast(4)
+        val marginBottom = (h * 0.055f).toInt().coerceAtLeast(4)
 
         var sumR = 0L; var sumG = 0L; var sumB = 0L; var cnt = 0L
         val stepY = maxOf(1, h / 40)
@@ -2633,7 +2527,7 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                 val r = (c shr 16) and 0xFF
                 val g = (c shr 8) and 0xFF
                 val b = c and 0xFF
-                if (r + g + b > 380) {
+                if (r + g + b > 420) {
                     sumR += r; sumG += g; sumB += b; cnt++
                 }
             }
@@ -2643,24 +2537,17 @@ class MainActivity : FlutterActivity(), SensorEventListener {
         val paperB = if (cnt > 0) (sumB / cnt).toInt().coerceIn(200, 255) else 245
         val paperColor = (0xFF shl 24) or (paperR shl 16) or (paperG shl 8) or paperB
 
-        fun isSkinPixel(c: Int): Boolean {
-            val r = (c shr 16) and 0xFF
-            val g = (c shr 8) and 0xFF
-            val b = c and 0xFF
-            val maxC = maxOf(r, maxOf(g, b))
-            val minC = minOf(r, minOf(g, b))
-            return r > 95 && g > 40 && b > 20 &&
-                (maxC - minC) > 22 &&
-                (r - g) > 15 && r > b &&
-                (r + g + b) < 660
-        }
-
         for (y in 0 until h) {
             val row = y * w
             val inBottom = y >= h - marginBottom
             for (x in 0 until w) {
                 if (x < marginX || x >= w - marginX || inBottom) {
-                    if (isSkinPixel(pixels[row + x])) {
+                    val c = pixels[row + x]
+                    val r = (c shr 16) and 0xFF
+                    val g = (c shr 8) and 0xFF
+                    val b = c and 0xFF
+                    val sat = maxOf(r, maxOf(g, b)) - minOf(r, minOf(g, b))
+                    if (r > 115 && g > 55 && b > 35 && sat > 38 && (r - g) > 22 && g >= b && (r + g + b) in 220..640) {
                         pixels[row + x] = paperColor
                     }
                 }
@@ -2686,7 +2573,6 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                     } catch (_: Exception) {}
                 }
                 val bmp = decodePageBitmap(path) ?: continue
-                // 300 DPI 인쇄급 PDF 페이지 해상도 (가로 2480px 기준)
                 val targetW = 2480
                 val scale = targetW.toFloat() / bmp.width.toFloat().coerceAtLeast(1f)
                 val pageW = targetW
@@ -2716,7 +2602,7 @@ class MainActivity : FlutterActivity(), SensorEventListener {
 /**
  * 무료 오픈소스 OpenCV (org.opencv:opencv:4.10.0, Apache 2.0 라이선스) 기반
  * - Bicubic(INTER_CUBIC) 서브픽셀 원근 보정 및 리사이즈
- * - 스프링 노트·책·문서 윤곽선(ConvexHull + approxPolyDP + minAreaRect) 고정밀 검출 엔진
+ * - 중심 종이 밝기 기반 마스크의 ConvexHull + approxPolyDP 4점 다각형 피팅
  */
 object OpenCvScanEngine {
     @Volatile
@@ -2807,154 +2693,120 @@ object OpenCvScanEngine {
         return Bitmap.createScaledBitmap(src, targetW, targetH, true)
     }
 
-    fun detectQuadOpenCv(src: Bitmap): FloatArray? {
+    /**
+     * 중심 종이 밝기 기준으로 분리된 단일 종이 마스크(maskBytes)에서
+     * OpenCV ConvexHull + approxPolyDP로 가장 정확한 4개 모서리를 추출한다.
+     */
+    fun fitQuadFromPaperMaskOpenCv(maskBytes: ByteArray, W: Int, H: Int): FloatArray? {
         if (!ensureInitialized()) return null
-        val W = 240
-        val H = maxOf(160, (src.height * W / maxOf(1, src.width)).coerceIn(160, 360))
-        val small = if (src.width == W && src.height == H) src else Bitmap.createScaledBitmap(src, W, H, true)
-        val rgba = org.opencv.core.Mat()
-        val gray = org.opencv.core.Mat()
-        val blurred = org.opencv.core.Mat()
-        val edges = org.opencv.core.Mat()
-        val kernel3 = org.opencv.imgproc.Imgproc.getStructuringElement(
-            org.opencv.imgproc.Imgproc.MORPH_RECT,
-            org.opencv.core.Size(3.0, 3.0)
-        )
+        val maskMat = org.opencv.core.Mat(H, W, org.opencv.core.CvType.CV_8UC1)
         val kernel5 = org.opencv.imgproc.Imgproc.getStructuringElement(
             org.opencv.imgproc.Imgproc.MORPH_RECT,
             org.opencv.core.Size(5.0, 5.0)
         )
         try {
-            org.opencv.android.Utils.bitmapToMat(small, rgba)
-            org.opencv.imgproc.Imgproc.cvtColor(rgba, gray, org.opencv.imgproc.Imgproc.COLOR_RGBA2GRAY)
-            org.opencv.imgproc.Imgproc.GaussianBlur(gray, blurred, org.opencv.core.Size(5.0, 5.0), 0.0)
+            maskMat.put(0, 0, maskBytes)
+            // 스프링 노트 상단 구멍과 내부 필기 획을 매끄럽게 메움
+            org.opencv.imgproc.Imgproc.morphologyEx(
+                maskMat,
+                maskMat,
+                org.opencv.imgproc.Imgproc.MORPH_CLOSE,
+                kernel5
+            )
+            val contours = ArrayList<org.opencv.core.MatOfPoint>()
+            val hierarchy = org.opencv.core.Mat()
+            org.opencv.imgproc.Imgproc.findContours(
+                maskMat,
+                contours,
+                hierarchy,
+                org.opencv.imgproc.Imgproc.RETR_EXTERNAL,
+                org.opencv.imgproc.Imgproc.CHAIN_APPROX_SIMPLE
+            )
+            hierarchy.release()
+            if (contours.isEmpty()) return null
 
-            val totalArea = (W * H).toDouble()
-            var bestQuad: FloatArray? = null
-            var bestArea = 0.0
-
-            // Otsu 이진화(스프링 노트 구멍 닫기 포함) + 다중 Canny 임계값 탐색
-            for ((t1, t2) in listOf(0.0 to 0.0, 38.0 to 115.0, 60.0 to 170.0, 24.0 to 80.0)) {
-                if (t1 == 0.0) {
-                    org.opencv.imgproc.Imgproc.threshold(
-                        blurred,
-                        edges,
-                        0.0,
-                        255.0,
-                        org.opencv.imgproc.Imgproc.THRESH_BINARY or org.opencv.imgproc.Imgproc.THRESH_OTSU
-                    )
-                    // 스프링 노트의 상단 링 구멍들을 매끄럽게 연결하기 위해 MORPH_CLOSE 수행
-                    org.opencv.imgproc.Imgproc.morphologyEx(
-                        edges,
-                        edges,
-                        org.opencv.imgproc.Imgproc.MORPH_CLOSE,
-                        kernel5
-                    )
+            var largest: org.opencv.core.MatOfPoint? = null
+            var maxArea = 0.0
+            for (c in contours) {
+                val a = kotlin.math.abs(org.opencv.imgproc.Imgproc.contourArea(c))
+                if (a > maxArea) {
+                    largest?.release()
+                    largest = c
+                    maxArea = a
                 } else {
-                    org.opencv.imgproc.Imgproc.Canny(blurred, edges, t1, t2)
-                    org.opencv.imgproc.Imgproc.dilate(edges, edges, kernel3)
-                }
-
-                val contours = ArrayList<org.opencv.core.MatOfPoint>()
-                val hierarchy = org.opencv.core.Mat()
-                org.opencv.imgproc.Imgproc.findContours(
-                    edges,
-                    contours,
-                    hierarchy,
-                    org.opencv.imgproc.Imgproc.RETR_LIST,
-                    org.opencv.imgproc.Imgproc.CHAIN_APPROX_SIMPLE
-                )
-                hierarchy.release()
-
-                for (cnt in contours) {
-                    val rawArea = kotlin.math.abs(org.opencv.imgproc.Imgproc.contourArea(cnt))
-                    if (rawArea < totalArea * 0.14 || rawArea > totalArea * 0.96) {
-                        cnt.release()
-                        continue
-                    }
-
-                    // Convex Hull(볼록 껍질)을 먼저 구해 스프링 노트의 톱니 모양 구멍이나 손가락 가림을 직선으로 연결
-                    val hullIdx = org.opencv.core.MatOfInt()
-                    org.opencv.imgproc.Imgproc.convexHull(cnt, hullIdx)
-                    val cntArr = cnt.toArray()
-                    val hullPts = hullIdx.toArray().map { idx -> cntArr[idx] }.toTypedArray()
-                    hullIdx.release()
-                    cnt.release()
-
-                    if (hullPts.size < 4) continue
-                    val hullMatInt = org.opencv.core.MatOfPoint(*hullPts)
-                    val hullArea = kotlin.math.abs(org.opencv.imgproc.Imgproc.contourArea(hullMatInt))
-                    hullMatInt.release()
-                    if (hullArea < totalArea * 0.15 || hullArea > totalArea * 0.96 || hullArea <= bestArea) {
-                        continue
-                    }
-
-                    val hull2f = org.opencv.core.MatOfPoint2f(*hullPts)
-                    val peri = org.opencv.imgproc.Imgproc.arcLength(hull2f, true)
-                    var quadPts: Array<org.opencv.core.Point>? = null
-
-                    for (epsFactor in doubleArrayOf(0.020, 0.028, 0.038, 0.050, 0.065)) {
-                        val approx = org.opencv.core.MatOfPoint2f()
-                        org.opencv.imgproc.Imgproc.approxPolyDP(hull2f, approx, epsFactor * peri, true)
-                        if (approx.rows() == 4) {
-                            quadPts = approx.toArray()
-                            approx.release()
-                            break
-                        }
-                        approx.release()
-                    }
-
-                    // 둥근 모서리 등으로 4점이 바로 안 나오면 회전 최소 사각형(minAreaRect)에 가장 가까운 4개 볼록 껍질 꼭짓점 선택
-                    if (quadPts == null) {
-                        val rotRect = org.opencv.imgproc.Imgproc.minAreaRect(hull2f)
-                        val boxPts = Array(4) { org.opencv.core.Point() }
-                        rotRect.points(boxPts)
-                        quadPts = Array(4) { bIdx ->
-                            val bp = boxPts[bIdx]
-                            hullPts.minByOrNull { hp ->
-                                val dx = hp.x - bp.x
-                                val dy = hp.y - bp.y
-                                dx * dx + dy * dy
-                            } ?: bp
-                        }
-                    }
-                    hull2f.release()
-
-                    val raw8 = floatArrayOf(
-                        (quadPts[0].x.toFloat() / W), (quadPts[0].y.toFloat() / H),
-                        (quadPts[1].x.toFloat() / W), (quadPts[1].y.toFloat() / H),
-                        (quadPts[2].x.toFloat() / W), (quadPts[2].y.toFloat() / H),
-                        (quadPts[3].x.toFloat() / W), (quadPts[3].y.toFloat() / H)
-                    )
-                    val valid = DocumentQuadDetector.ensureValidOrderedQuad(raw8)
-                    if (valid != null) {
-                        bestArea = hullArea
-                        bestQuad = DocumentQuadDetector.insetQuadSlightly(valid, 0.008f)
-                    }
+                    c.release()
                 }
             }
+            val cnt = largest ?: return null
+            if (maxArea < (W * H) * 0.12) {
+                cnt.release()
+                return null
+            }
 
-            return bestQuad
+            val hullIdx = org.opencv.core.MatOfInt()
+            org.opencv.imgproc.Imgproc.convexHull(cnt, hullIdx)
+            val cntArr = cnt.toArray()
+            val hullPts = hullIdx.toArray().map { idx -> cntArr[idx] }.toTypedArray()
+            hullIdx.release()
+            cnt.release()
+            if (hullPts.size < 4) return null
+
+            val hull2f = org.opencv.core.MatOfPoint2f(*hullPts)
+            val peri = org.opencv.imgproc.Imgproc.arcLength(hull2f, true)
+            var quadPts: Array<org.opencv.core.Point>? = null
+
+            for (epsFactor in doubleArrayOf(0.018, 0.025, 0.034, 0.045, 0.058)) {
+                val approx = org.opencv.core.MatOfPoint2f()
+                org.opencv.imgproc.Imgproc.approxPolyDP(hull2f, approx, epsFactor * peri, true)
+                if (approx.rows() == 4) {
+                    val cand = approx.toArray()
+                    val raw8 = floatArrayOf(
+                        (cand[0].x.toFloat() / W), (cand[0].y.toFloat() / H),
+                        (cand[1].x.toFloat() / W), (cand[1].y.toFloat() / H),
+                        (cand[2].x.toFloat() / W), (cand[2].y.toFloat() / H),
+                        (cand[3].x.toFloat() / W), (cand[3].y.toFloat() / H)
+                    )
+                    if (DocumentQuadDetector.ensureValidOrderedQuad(raw8) != null) {
+                        quadPts = cand
+                        approx.release()
+                        break
+                    }
+                }
+                approx.release()
+            }
+            hull2f.release()
+
+            if (quadPts == null) {
+                // 볼록 껍질 꼭짓점들 중 4대 극점(x+y 최소/최대, x-y 최대/최소) 추출
+                val tl = hullPts.minByOrNull { it.x + it.y } ?: return null
+                val br = hullPts.maxByOrNull { it.x + it.y } ?: return null
+                val tr = hullPts.maxByOrNull { it.x - it.y } ?: return null
+                val bl = hullPts.minByOrNull { it.x - it.y } ?: return null
+                quadPts = arrayOf(tl, tr, br, bl)
+            }
+
+            val raw8 = floatArrayOf(
+                (quadPts[0].x.toFloat() / W), (quadPts[0].y.toFloat() / H),
+                (quadPts[1].x.toFloat() / W), (quadPts[1].y.toFloat() / H),
+                (quadPts[2].x.toFloat() / W), (quadPts[2].y.toFloat() / H),
+                (quadPts[3].x.toFloat() / W), (quadPts[3].y.toFloat() / H)
+            )
+            return DocumentQuadDetector.ensureValidOrderedQuad(raw8)
         } catch (_: Throwable) {
             return null
         } finally {
-            rgba.release()
-            gray.release()
-            blurred.release()
-            edges.release()
-            kernel3.release()
+            maskMat.release()
             kernel5.release()
-            if (small !== src) small.recycle()
         }
     }
 }
 
 object DocumentQuadDetector {
     /**
-     * 검출된 종이 사각형 꼭짓점을 중심 쪽으로 미세하게(예: 0.8%) 안쪽으로 당겨
-     * 종이 바깥의 검은 책상 테두리가 스캔본에 포함되는 현상을 방지한다.
+     * 검출된 종이 사각형 꼭짓점을 중심 쪽으로 미세하게(예: 0.6%) 안쪽으로 당겨
+     * 종이 바깥의 책상 테두리가 스캔본에 포함되는 현상을 방지한다.
      */
-    fun insetQuadSlightly(q: FloatArray, ratio: Float = 0.008f): FloatArray {
+    fun insetQuadSlightly(q: FloatArray, ratio: Float = 0.006f): FloatArray {
         if (q.size != 8) return q
         val cx = (q[0] + q[2] + q[4] + q[6]) * 0.25f
         val cy = (q[1] + q[3] + q[5] + q[7]) * 0.25f
@@ -2965,8 +2817,8 @@ object DocumentQuadDetector {
     }
 
     /**
-     * 4개 점 [x0,y0, x1,y1, x2,y2, x3,y3]을 중복 없이 정확한 시계방향 [TL, TR, BR, BL]로 정렬하고
-     * 사각형의 가로·세로 길이와 볼록성(외적 부호)을 검증한다. 비정상 사각형이면 null 반환.
+     * 4개 점 [x0,y0, x1,y1, x2,y2, x3,y3]을 중복 없이 정확한 시계방향 [TL, TR, BR, BL]로 정렬하고,
+     * 사각형의 가로·세로 길이, 마주보는 변의 비율(비정상 사다리꼴 왜곡 차단), 볼록성(외적 부호)을 검증한다.
      */
     fun ensureValidOrderedQuad(q: FloatArray): FloatArray? {
         if (q.size != 8) return null
@@ -2994,6 +2846,13 @@ object DocumentQuadDetector {
             return null
         }
 
+        // 마주보는 변의 길이 비율이 1.48배를 초과하는 기형적 사다리꼴(예: 유리 책상 모서리 오인식) 차단
+        val ratioW = maxOf(topW, botW) / maxOf(0.01f, minOf(topW, botW))
+        val ratioH = maxOf(leftH, rightH) / maxOf(0.01f, minOf(leftH, rightH))
+        if (ratioW > 1.48f || ratioH > 1.48f) {
+            return null
+        }
+
         // 시계방향 외적(Cross Product) 검사로 꼬인 나비 모양(Self-intersecting) 차단
         val ordered = arrayOf(tl, tr, br, bl)
         for (i in 0 until 4) {
@@ -3001,7 +2860,7 @@ object DocumentQuadDetector {
             val b = ordered[(i + 1) % 4]
             val c = ordered[(i + 2) % 4]
             val cross = (b.first - a.first) * (c.second - b.second) - (b.second - a.second) * (c.first - b.first)
-            if (cross <= 0.005f) return null
+            if (cross <= 0.008f) return null
         }
 
         return floatArrayOf(
@@ -3013,7 +2872,7 @@ object DocumentQuadDetector {
     }
 
     fun detectQuadFromFile(path: String): FloatArray {
-        val defaultQuad = floatArrayOf(0.06f, 0.06f, 0.94f, 0.06f, 0.94f, 0.94f, 0.06f, 0.94f)
+        val defaultQuad = floatArrayOf(0.08f, 0.08f, 0.92f, 0.08f, 0.92f, 0.92f, 0.08f, 0.92f)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return defaultQuad
@@ -3028,68 +2887,103 @@ object DocumentQuadDetector {
         }
     }
 
+    /**
+     * 중심 종이 기준 적응형 종이 점수(Paperness Score) + 연결 요소 Flood-Fill + OpenCV ConvexHull 4점 검출:
+     * - 기존의 전체 이미지 Otsu/Canny 방식은 어두운 나무 책상(38)과 유리 책상(120)과 흰 노트(198)가 함께 있을 때
+     *   임계값이 105로 잡혀 유리 책상까지 종이로 묶어버리는 문제가 있었음.
+     * - 화면 중앙 영역(0.28~0.72)의 상위 80% 종이 점수(centerP80)를 기준으로 임계값(centerP80 * 0.64)을 설정하여
+     *   유리 책상·바닥은 100% 배제하고 그림자 진 종이 모서리까지만 정확히 분리한다.
+     */
     fun detectQuadFromBitmap(src: Bitmap): FloatArray {
-        val defaultQuad = floatArrayOf(0.06f, 0.06f, 0.94f, 0.06f, 0.94f, 0.94f, 0.06f, 0.94f)
-        OpenCvScanEngine.detectQuadOpenCv(src)?.let { return it }
-
-        val W = 160
-        val H = maxOf(120, (src.height * W / maxOf(1, src.width)).coerceIn(120, 260))
+        val defaultQuad = floatArrayOf(0.08f, 0.08f, 0.92f, 0.08f, 0.92f, 0.92f, 0.08f, 0.92f)
+        val W = 200
+        val H = maxOf(150, (src.height * W / maxOf(1, src.width)).coerceIn(150, 320))
         val small = if (src.width == W && src.height == H) src else Bitmap.createScaledBitmap(src, W, H, true)
         try {
-            val px = IntArray(W * H)
+            val total = W * H
+            val px = IntArray(total)
             small.getPixels(px, 0, W, 0, 0, W, H)
 
-            val score = IntArray(W * H)
-            val hist = IntArray(256)
-            for (i in px.indices) {
+            val score = IntArray(total)
+            for (i in 0 until total) {
                 val c = px[i]
                 val r = (c shr 16) and 0xFF
                 val g = (c shr 8) and 0xFF
                 val b = c and 0xFF
                 val lum = (r * 77 + g * 150 + b * 29) shr 8
                 val sat = maxOf(r, maxOf(g, b)) - minOf(r, minOf(g, b))
-                val s = (lum - (sat * 13) / 20).coerceIn(0, 255)
-                score[i] = s
-                hist[s]++
+                // 종이는 밝기가 높고 채도가 낮음 (유리 반사광이나 노란 바닥, 나무 책상을 효과적으로 배제)
+                score[i] = (lum - (sat * 14) / 20).coerceIn(0, 255)
             }
 
-            val total = W * H
-            var sumAll = 0.0
-            for (t in 0 until 256) sumAll += t.toDouble() * hist[t]
-            var wb = 0.0
-            var sb = 0.0
-            var bestVar = -1.0
-            var otsu = 140
-            for (t in 0 until 256) {
-                wb += hist[t]
-                if (wb == 0.0) continue
-                val wf = total - wb
-                if (wf == 0.0) break
-                sb += t.toDouble() * hist[t]
-                val mb = sb / wb
-                val mf = (sumAll - sb) / wf
-                val v = wb * wf * (mb - mf) * (mb - mf)
-                if (v > bestVar) {
-                    bestVar = v
-                    otsu = t
+            // 화면 중앙(0.28 ~ 0.72) 영역의 히스토그램에서 상위 80% 종이 기준 점수(centerP80) 산출
+            val centerHist = IntArray(256)
+            var centerCount = 0
+            val cx0 = (W * 0.28f).toInt()
+            val cx1 = (W * 0.72f).toInt()
+            val cy0 = (H * 0.28f).toInt()
+            val cy1 = (H * 0.72f).toInt()
+            for (y in cy0..cy1) {
+                val row = y * W
+                for (x in cx0..cx1) {
+                    centerHist[score[row + x]]++
+                    centerCount++
                 }
             }
-            val th = otsu.coerceIn(105, 205)
+            var acc = 0
+            var centerP80 = 175
+            val target80 = (centerCount * 80) / 100
+            for (v in 0..255) {
+                acc += centerHist[v]
+                if (acc >= target80) {
+                    centerP80 = v
+                    break
+                }
+            }
 
+            // 중심 종이 점수의 64%를 임계값으로 설정:
+            // 예: 종이 중심이 177이면 th=113 -> 그림자 진 종이 모서리(120)는 포함하고 유리 책상(88)·바닥(53)은 완벽 차단!
+            val th = ((centerP80 * 64) / 100).coerceIn(95, 200)
+
+            // 3x3 모폴로지 Closing(팽창 후 침식)으로 종이 내부 글씨/표 선이 Flood-Fill을 막지 않게 처리
+            val rawBin = BooleanArray(total)
+            for (i in 0 until total) {
+                rawBin[i] = score[i] >= th
+            }
+            val dilated = BooleanArray(total)
+            for (y in 1 until H - 1) {
+                val r = y * W
+                for (x in 1 until W - 1) {
+                    val idx = r + x
+                    dilated[idx] = rawBin[idx] || rawBin[idx - 1] || rawBin[idx + 1] ||
+                        rawBin[idx - W] || rawBin[idx + W]
+                }
+            }
+            val closedBin = BooleanArray(total)
+            for (y in 1 until H - 1) {
+                val r = y * W
+                for (x in 1 until W - 1) {
+                    val idx = r + x
+                    closedBin[idx] = dilated[idx] && dilated[idx - 1] && dilated[idx + 1] &&
+                        dilated[idx - W] && dilated[idx + W]
+                }
+            }
+
+            // 중심에서 연결된 단일 종이 영역만 BFS로 추출 (외곽의 밝은 벽·바닥 빛반사 분리)
             val mask = BooleanArray(total)
             val queue = IntArray(total)
             var qHead = 0
             var qTail = 0
 
-            val cx0 = (W * 0.32f).toInt()
-            val cx1 = (W * 0.68f).toInt()
-            val cy0 = (H * 0.32f).toInt()
-            val cy1 = (H * 0.68f).toInt()
-            for (y in cy0..cy1 step 2) {
+            val sx0 = (W * 0.34f).toInt()
+            val sx1 = (W * 0.66f).toInt()
+            val sy0 = (H * 0.34f).toInt()
+            val sy1 = (H * 0.66f).toInt()
+            for (y in sy0..sy1 step 2) {
                 val row = y * W
-                for (x in cx0..cx1 step 2) {
+                for (x in sx0..sx1 step 2) {
                     val idx = row + x
-                    if (score[idx] >= th && !mask[idx]) {
+                    if (closedBin[idx] && !mask[idx]) {
                         mask[idx] = true
                         queue[qTail++] = idx
                     }
@@ -3100,16 +2994,16 @@ object DocumentQuadDetector {
                 val cur = queue[qHead++]
                 val cx = cur % W
                 val cy = cur / W
-                if (cx > 1 && !mask[cur - 1] && score[cur - 1] >= th) {
+                if (cx > 1 && !mask[cur - 1] && closedBin[cur - 1]) {
                     mask[cur - 1] = true; queue[qTail++] = cur - 1
                 }
-                if (cx < W - 2 && !mask[cur + 1] && score[cur + 1] >= th) {
+                if (cx < W - 2 && !mask[cur + 1] && closedBin[cur + 1]) {
                     mask[cur + 1] = true; queue[qTail++] = cur + 1
                 }
-                if (cy > 1 && !mask[cur - W] && score[cur - W] >= th) {
+                if (cy > 1 && !mask[cur - W] && closedBin[cur - W]) {
                     mask[cur - W] = true; queue[qTail++] = cur - W
                 }
-                if (cy < H - 2 && !mask[cur + W] && score[cur + W] >= th) {
+                if (cy < H - 2 && !mask[cur + W] && closedBin[cur + W]) {
                     mask[cur + W] = true; queue[qTail++] = cur + W
                 }
             }
@@ -3118,10 +3012,17 @@ object DocumentQuadDetector {
                 return defaultQuad
             }
 
-            var minSum = Int.MAX_VALUE; var tlX = W * 0.06f; var tlY = H * 0.06f
-            var maxSum = Int.MIN_VALUE; var brX = W * 0.94f; var brY = H * 0.94f
-            var maxDiff = Int.MIN_VALUE; var trX = W * 0.94f; var trY = H * 0.06f
-            var minDiff = Int.MAX_VALUE; var blX = W * 0.06f; var blY = H * 0.94f
+            // 1차: 추출된 중심 종이 마스크를 OpenCV ConvexHull + approxPolyDP에 전달하여 정밀 4점 피팅
+            val maskBytes = ByteArray(total) { idx -> if (mask[idx]) 255.toByte() else 0.toByte() }
+            OpenCvScanEngine.fitQuadFromPaperMaskOpenCv(maskBytes, W, H)?.let { cvQuad ->
+                return insetQuadSlightly(cvQuad, 0.006f)
+            }
+
+            // 2차 폴백: 종이 마스크 픽셀들의 4대 극점(x+y 최소/최대, x-y 최대/최소) 추출
+            var minSum = Int.MAX_VALUE; var tlX = W * 0.08f; var tlY = H * 0.08f
+            var maxSum = Int.MIN_VALUE; var brX = W * 0.92f; var brY = H * 0.92f
+            var maxDiff = Int.MIN_VALUE; var trX = W * 0.92f; var trY = H * 0.08f
+            var minDiff = Int.MAX_VALUE; var blX = W * 0.08f; var blY = H * 0.92f
 
             for (i in 0 until qTail) {
                 val idx = queue[i]
@@ -3141,7 +3042,7 @@ object DocumentQuadDetector {
                 brX / W, brY / H,
                 blX / W, blY / H
             )
-            return ensureValidOrderedQuad(rawCandidate)?.let { insetQuadSlightly(it, 0.008f) } ?: defaultQuad
+            return ensureValidOrderedQuad(rawCandidate)?.let { insetQuadSlightly(it, 0.006f) } ?: defaultQuad
         } finally {
             if (small !== src) small.recycle()
         }
@@ -3149,11 +3050,11 @@ object DocumentQuadDetector {
 }
 
 /**
- * 인앱 초고화질 무음 문서 스캔 카메라 화면 (v101):
+ * 인앱 초고화질 무음 문서 스캔 카메라 화면 (v102):
  * - 고해상도 4:3 SurfaceTexture 버퍼(최대 3264x2448 / 2560x1920 + 구형 기기 자동 폴백) 및
  *   FBO 풀해상도 비트맵 추출(textureView.getBitmap(capW, capH))로 화면 크기 제약 없이 선명한 원본 획득
  * - 화면 비율 왜곡(늘어남) 방지를 위한 3:4 종횡비 정렬로 청록색 인식 틀과 실제 촬영 영역 100% 일치
- * - HARDWARE EDGE_MODE_HIGH_QUALITY / NOISE_REDUCTION_MODE_HIGH_QUALITY / 광학 손떨림 보정(OIS) 활성화
+ * - 중심 종이 밝기 기반 실시간 사각형 검출로 유리 책상/바닥 오인식 원천 차단
  */
 class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.SurfaceTextureListener {
     private lateinit var cameraFrame: android.widget.FrameLayout
@@ -3182,7 +3083,7 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
 
     private val capturedPaths = ArrayList<String>()
     private val capturedQuads = ArrayList<String>()
-    private var currentQuad = floatArrayOf(0.06f, 0.06f, 0.94f, 0.06f, 0.94f, 0.94f, 0.06f, 0.94f)
+    private var currentQuad = floatArrayOf(0.08f, 0.08f, 0.92f, 0.08f, 0.92f, 0.92f, 0.08f, 0.92f)
     private var previewSize = android.util.Size(1920, 1440)
     private var fallbackPreviewSize = android.util.Size(1920, 1440)
     private var triedFallbackSession = false
@@ -3521,10 +3422,6 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
         setContentView(root)
     }
 
-    /**
-     * 카메라 센서 버퍼 비율(예: 3:4)에 맞춰 TextureView와 청록색 오버레이의 크기를 정확히 일치시켜
-     * 화면이 위아래로 늘어나 글씨가 왜곡되는 현상을 방지하고 인식 틀 좌표를 1:1로 맞춘다.
-     */
     private fun applyPreviewAspectRatio() {
         val frameW = cameraFrame.width
         val frameH = cameraFrame.height
@@ -3608,12 +3505,6 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
         } catch (_: Throwable) {}
     }
 
-    /**
-     * 초고해상도 GPU SurfaceTexture 버퍼 직접 추출:
-     * - 화면 View 픽셀 크기에 제한받지 않고 카메라 센서 버퍼 해상도(예: 2160x2880 ~ 2448x3264)로
-     *   OpenGL FBO 비트맵을 직접 렌더링하여 작은 손글씨까지 선명하게 캡처한다.
-     * - 촬영 시점에 캡처된 고해상도 프레임에서 종이 윤곽선을 한 번 더 정밀 검출하여 인식 틀 오차를 제거한다.
-     */
     private fun captureFrameSilently() {
         if (isCapturing || !textureView.isAvailable) return
         val bufW = minOf(previewSize.width, previewSize.height).coerceAtLeast(1080)
@@ -3640,11 +3531,9 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
                     rawBmp.compress(Bitmap.CompressFormat.JPEG, 98, out)
                 }
 
-                // 캡처된 프레임에서 즉시 OpenCV 정밀 사각형 재검출 수행 (실시간 EMA 지연 보정)
+                // 캡처된 프레임에서 중심 종이 기반 정밀 사각형 재검출 수행
                 val refinedQuad = if (flattenQuad) {
-                    OpenCvScanEngine.detectQuadOpenCv(rawBmp)
-                        ?: DocumentQuadDetector.ensureValidOrderedQuad(quadSnapshot)
-                        ?: floatArrayOf(0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f)
+                    DocumentQuadDetector.detectQuadFromBitmap(rawBmp)
                 } else {
                     floatArrayOf(0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f)
                 }
@@ -3652,7 +3541,10 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
                 val thumbBmp = Bitmap.createScaledBitmap(rawBmp, 120, 160, true)
                 rawBmp.recycle()
 
-                val qString = refinedQuad.joinToString(",") { String.format(java.util.Locale.US, "%.4f", it) }
+                val finalQuad = DocumentQuadDetector.ensureValidOrderedQuad(refinedQuad)
+                    ?: DocumentQuadDetector.ensureValidOrderedQuad(quadSnapshot)
+                    ?: floatArrayOf(0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f)
+                val qString = finalQuad.joinToString(",") { String.format(java.util.Locale.US, "%.4f", it) }
 
                 uiHandler.post {
                     capturedPaths.add(outFile.absolutePath)
@@ -3754,7 +3646,6 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
                     val map = chars.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
                     val prevSizes = map?.getOutputSizes(android.graphics.SurfaceTexture::class.java)
                     if (!prevSizes.isNullOrEmpty()) {
-                        // 문서 비율(4:3)과 일치하는 고해상도(최대 3264x2448 / 2560x1920) 스트림 우선 선택
                         val fourThreeHigh = prevSizes.filter {
                             val hi = maxOf(it.width, it.height)
                             val lo = minOf(it.width, it.height).coerceAtLeast(1)
@@ -3883,14 +3774,14 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
 
     override fun onSurfaceTextureUpdated(surface: android.graphics.SurfaceTexture) {
         if (isAnalyzing || isCapturing) return
-        val smallBmp = textureView.getBitmap(240, 320) ?: return
+        val smallBmp = textureView.getBitmap(200, 266) ?: return
         isAnalyzing = true
         bgHandler?.post {
             try {
                 val detected = DocumentQuadDetector.detectQuadFromBitmap(smallBmp)
                 smallBmp.recycle()
                 for (i in 0 until 8) {
-                    currentQuad[i] = currentQuad[i] * 0.55f + detected[i] * 0.45f
+                    currentQuad[i] = currentQuad[i] * 0.50f + detected[i] * 0.50f
                 }
                 uiHandler.post {
                     overlayView.updateQuad(currentQuad)
