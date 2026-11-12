@@ -3090,7 +3090,7 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
 
     companion object {
         private const val REQ_CAM_PERM = 9102
-        private val TEAL_COLOR = Color.parseColor("#00D9B5")
+        private val TEAL_COLOR = Color.parseColor("#76D632")
     }
 
     private fun dp(v: Float): Int = (v * resources.displayMetrics.density).toInt()
@@ -3800,14 +3800,14 @@ class DocumentQuadOverlayView(context: Context) : View(context) {
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.parseColor("#2400E5B8")
+        color = Color.parseColor("#248CE63C")
     }
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 3.5f * resources.displayMetrics.density
         strokeJoin = Paint.Join.ROUND
         strokeCap = Paint.Cap.ROUND
-        color = Color.parseColor("#00E5B8")
+        color = Color.parseColor("#8CE63C")
     }
     private val path = Path()
 
@@ -3842,7 +3842,7 @@ class DocumentQuadOverlayView(context: Context) : View(context) {
         canvas.drawPath(path, strokePaint)
 
         if (flashAlpha > 0) {
-            canvas.drawColor(Color.argb(flashAlpha, 0, 229, 184))
+            canvas.drawColor(Color.argb(flashAlpha, 140, 230, 60))
         }
     }
 }

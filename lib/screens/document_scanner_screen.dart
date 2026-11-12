@@ -57,8 +57,8 @@ class DocumentScannerScreen extends StatefulWidget {
 class _DocumentScannerScreenState extends State<DocumentScannerScreen>
     with SingleTickerProviderStateMixin {
   static const MethodChannel _pdfChannel = MethodChannel('ebook_reader/pdf_renderer');
-  static const Color _teal = Color(0xFF00C49A);
-  static const Color _tealBright = Color(0xFF00E5B8);
+  static const Color _teal = Color(0xFF68C628);
+  static const Color _tealBright = Color(0xFF8CE63C);
 
   final List<_ScanPageItem> _pages = [];
   bool _colorEnhance = true;
@@ -1015,11 +1015,13 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                             : null,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          child: Icon(
-                            Icons.play_arrow_rounded,
-                            size: 16,
-                            color: _currentEditIndex > 0 ? Colors.white : Colors.white24,
-                            textDirection: TextDirection.rtl,
+                          child: RotatedBox(
+                            quarterTurns: 2,
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              size: 16,
+                              color: _currentEditIndex > 0 ? Colors.white : Colors.white24,
+                            ),
                           ),
                         ),
                       ),
@@ -1367,19 +1369,19 @@ class _TealQuadPainter extends CustomPainter {
     canvas.drawPath(
       polyPath,
       Paint()
-        ..color = const Color(0x2400E5B8)
+        ..color = const Color(0x248CE63C)
         ..style = PaintingStyle.fill,
     );
 
     final borderPaint = Paint()
-      ..color = const Color(0xFF00E5B8)
+      ..color = const Color(0xFF8CE63C)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(polyPath, borderPaint);
 
     final fillHandle = Paint()
-      ..color = const Color(0xFF00E5B8)
+      ..color = const Color(0xFF8CE63C)
       ..style = PaintingStyle.fill;
     final strokeHandle = Paint()
       ..color = Colors.white

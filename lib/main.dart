@@ -2289,22 +2289,48 @@ class _BookshelfScreenState extends State<BookshelfScreen> with TickerProviderSt
 
     final fileName = createdPdf.path.split(Platform.pathSeparator).last;
     final grpDisplay = _localizeGroupName(targetGroup);
-    ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
-        content: Text(
-          _tr(
-            '스캔 PDF 파일이 [$grpDisplay]에 생성되었습니다. ($fileName)',
-            'Scanned PDF created in [$grpDisplay]. ($fileName)',
-            '扫描 PDF 已创建于 [$grpDisplay]。($fileName)',
-            'スキャンPDFが [$grpDisplay] に作成されました。($fileName)',
-          ),
-        ),
-        action: SnackBarAction(
-          label: _tr('열기', 'Open', '打开', '開く'),
-          onPressed: () => _openFile(createdPdf),
+        duration: const Duration(seconds: 3),
+        content: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _tr(
+                  '스캔 PDF 파일이 [$grpDisplay]에 생성되었습니다. ($fileName)',
+                  'Scanned PDF created in [$grpDisplay]. ($fileName)',
+                  '扫描 PDF 已创建于 [$grpDisplay]。($fileName)',
+                  'スキャンPDFが [$grpDisplay] に作成されました。($fileName)',
+                ),
+              ),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF8CE63C),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () {
+                messenger.hideCurrentSnackBar();
+                _openFile(createdPdf);
+              },
+              child: Text(
+                _tr('열기', 'Open', '打开', '開く'),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
         ),
       ),
     );
+    Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
+    });
   }
 
   bool _fabOpen = false; // 파일 추가 버튼을 눌러 세 가지 메뉴가 펼쳐진 상태
@@ -3477,7 +3503,12 @@ class _BookshelfScreenState extends State<BookshelfScreen> with TickerProviderSt
                 ),
               ],
             ),
-      body: SafeArea(
+      body: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        },
+        child: SafeArea(
         child: Column(
           children: [
             SizedBox(
@@ -3765,6 +3796,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> with TickerProviderSt
             ),
           ],
         ),
+      ),
       ),
       floatingActionButton: _isSelectionMode
           ? Row(
