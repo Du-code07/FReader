@@ -6,15 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../widgets/text_copy_sheet.dart';
-
 class _ScanPageItem {
   _ScanPageItem({
     required this.id,
     required this.rawPath,
     required this.quad,
     this.mode = 'magic',
-    this.contrast = 0.55,
+    this.contrast = 0.58,
     this.rotation = 0,
   });
 
@@ -22,7 +20,7 @@ class _ScanPageItem {
   String rawPath;
   // 4개 꼭짓점 [tlX, tlY, trX, trY, brX, brY, blX, blY] (0.0 ~ 1.0)
   List<double> quad;
-  String mode; // 'magic'|'noshadow'|'brighten'|'scan_bw'|'eco'|'scan_gray'|'invert'|'original'
+  String mode; // 'magic'|'noshadow'|'brighten'|'scan_bw'|'invert'|'original'
   double contrast; // 0.0 ~ 1.0
   int rotation; // 0, 90, 180, 270
   String? processedPath;
@@ -63,7 +61,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
   static const Color _tealBright = Color(0xFF00E5B8);
 
   final List<_ScanPageItem> _pages = [];
-  bool _shutterSound = false; // 기본: 카메라 셔터음 끄기 (무음)
   bool _colorEnhance = true;
   bool _eraseFingers = true;
   bool _flattenQuad = true;
@@ -95,15 +92,14 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
     }
   }
 
+  // 에코, 그레이스케일 제거 -> 6종 핵심 필터 구성
   List<(String, String)> get _filterDefs => [
         ('magic', _tr('강화', 'Enhance', '增强', '強調')),
         ('noshadow', _tr('음영 제거', 'No Shadow', '去阴影', '影除去')),
         ('brighten', _tr('밝게하기', 'Brighten', '增亮', '明るく')),
         ('scan_bw', _tr('흑백', 'B&W', '黑白', '白黒')),
-        ('eco', _tr('에코', 'Eco', '省墨', 'エコ')),
-        ('scan_gray', _tr('그레이스케일', 'Grayscale', '灰度', 'グレー')),
         ('invert', _tr('반전', 'Invert', '反色', '反転')),
-        ('original', _tr('원본', 'Original', '原图', ' 원본')),
+        ('original', _tr('원본', 'Original', '原图', '元の写真')),
       ];
 
   @override
@@ -142,7 +138,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
         'openInAppDocumentCamera',
         {
           'batchMode': batchMode,
-          'shutterSound': _shutterSound,
+          'shutterSound': false, // 셔터음 항상 꺼짐(무음) 고정
           'colorEnhance': _colorEnhance,
           'eraseFingers': _eraseFingers,
           'flattenQuad': _flattenQuad,
@@ -157,7 +153,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
         return;
       }
 
-      _shutterSound = (res['shutterSound'] as bool?) ?? _shutterSound;
       _colorEnhance = (res['colorEnhance'] as bool?) ?? _colorEnhance;
       _eraseFingers = (res['eraseFingers'] as bool?) ?? _eraseFingers;
       _flattenQuad = (res['flattenQuad'] as bool?) ?? _flattenQuad;
@@ -316,7 +311,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
     }
   }
 
-  Future<void> _processPage(_ScanPageItem item, {int maxDim = 1800}) async {
+  Future<void> _processPage(_ScanPageItem item, {int maxDim = 2600}) async {
     if (!mounted) return;
     setState(() => item.isProcessing = true);
 
@@ -366,7 +361,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
     }
   }
 
-  /// CamScanner 하단 필터 썸네일 스트립용 소형 미리보기 생성
   Future<void> _generateFilterThumbnails(_ScanPageItem item) async {
     try {
       final tmpDir = await getTemporaryDirectory();
@@ -383,7 +377,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
             'inputPath': item.rawPath,
             'outputPath': outPath,
             'mode': modeKey,
-            'contrast': 0.55,
+            'contrast': 0.58,
             'rotation': item.rotation,
             'quad': item.quad,
             'eraseFingers': _eraseFingers,
@@ -431,73 +425,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
         _docTitle = res.replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '');
       });
     }
-  }
-
-  Future<void> _extractTextFromCurrentPage(_ScanPageItem item) async {
-    final path = item.processedPath ?? item.rawPath;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        content: Row(
-          children: [
-            const SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2.5),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                _tr(
-                  '스캔 페이지에서 텍스트를 추출하는 중...',
-                  'Extracting text from scanned page...',
-                  '正在从扫描页提取文字...',
-                  'スキャンページからテキストを抽出中...',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    String extracted = '';
-    try {
-      final rawLines =
-          await _pdfChannel.invokeMethod<List<Object?>>('ocrLines', {'path': path});
-      if (rawLines != null && rawLines.isNotEmpty) {
-        final texts = <String>[];
-        for (final entry in rawLines) {
-          if (entry is Map) {
-            final t = (entry['t'] ?? '').toString().trim();
-            if (t.isNotEmpty) texts.add(t);
-          }
-        }
-        extracted = texts.join('\n');
-      }
-    } catch (_) {}
-
-    if (!mounted) return;
-    Navigator.pop(context); // 로딩 닫기
-
-    if (extracted.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _tr(
-              '인식된 글자가 없습니다.',
-              'No text recognized on this page.',
-              '未识别到文字。',
-              '認識された文字がありません。',
-            ),
-          ),
-        ),
-      );
-      return;
-    }
-
-    await showTextCopySheet(context, text: extracted, tr: _tr);
   }
 
   void _applyFilterToAllPages() {
@@ -600,7 +527,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
           await Future.delayed(const Duration(milliseconds: 60));
         }
         if (p.processedPath == null || !await File(p.processedPath!).exists()) {
-          await _processPage(p, maxDim: 2200);
+          await _processPage(p, maxDim: 3000);
         }
         finalPaths.add(p.processedPath ?? p.rawPath);
       }
@@ -622,7 +549,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
       );
 
       if (!mounted) return;
-      Navigator.pop(context); // 진행 창 닫기
+      Navigator.pop(context);
 
       if (savedPdfPath != null && savedPdfPath.isNotEmpty) {
         Navigator.pop(context, File(savedPdfPath));
@@ -701,6 +628,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                         width: maxW,
                         height: maxH,
                         fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
                       ),
                       Positioned.fill(
                         child: GestureDetector(
@@ -712,7 +640,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                             final nx = (pos.dx / maxW.clamp(1.0, double.infinity)).clamp(0.0, 1.0);
                             final ny = (pos.dy / maxH.clamp(1.0, double.infinity)).clamp(0.0, 1.0);
 
-                            // 가장 가까운 꼭짓점(0:TL, 1:TR, 2:BR, 3:BL) 찾기
                             int bestCorner = 0;
                             double bestDist = double.infinity;
                             for (int c = 0; c < 4; c++) {
@@ -849,7 +776,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
       return _buildQuadCropEditor(curItem);
     }
 
-    // ── CamScanner 스타일 메인 스캔 편집 화면 (Screenshots 2, 3, 4, 5, 6 반영) ──
     return Scaffold(
       backgroundColor: const Color(0xFF121417),
       appBar: AppBar(
@@ -933,7 +859,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // 스캔된 종이 프리뷰
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -947,15 +872,15 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                         ),
                         child: InteractiveViewer(
                           minScale: 1.0,
-                          maxScale: 4.5,
+                          maxScale: 5.0,
                           child: Image.file(
                             File(displayPath),
                             key: ValueKey('$displayPath:${page.mode}:${page.contrast}'),
                             fit: BoxFit.contain,
+                            filterQuality: FilterQuality.high,
                           ),
                         ),
                       ),
-                      // 좌상단 원형 삭제(휴지통) 버튼 (Screenshots 4, 5, 6 반영)
                       Positioned(
                         top: 12,
                         left: 12,
@@ -987,7 +912,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                           ),
                         ),
                       ),
-                      // 청록색 스캔 레이저 애니메이션 & 변환 중 표시
                       AnimatedBuilder(
                         animation: _scanWaveCtrl,
                         builder: (context, _) {
@@ -1042,7 +966,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                                             ),
                                             const SizedBox(width: 8),
                                             Text(
-                                              _tr('스캔 보정 중...', 'Enhancing...', '正在优化...', 'スキャン補正中...'),
+                                              _tr('글자 선명화 보정 중...', 'Sharpening text...', '正在清晰化文字...', '文字鮮明化補正中...'),
                                               style: const TextStyle(
                                                 color: Colors.white,
                                                 fontSize: 12.5,
@@ -1065,13 +989,12 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
             ),
           ),
 
-          // 2. 페이지 이동 캡슐 [ ◀ 1/1 ▶ ] & 우측 [ ◫ 비교 ] 버튼 (Screenshots 4, 5, 6 반영)
+          // 2. 페이지 이동 캡슐 [ ◀ 1/1 ▶ ] & 우측 [ ◫ 비교 ] 버튼
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // 중앙 페이지 표시 및 이동 캡슐
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
@@ -1134,7 +1057,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                     ],
                   ),
                 ),
-                // 우측 [ ◫ 비교 ] 버튼 (누르고 있거나 탭하여 원본 비교)
                 Align(
                   alignment: Alignment.centerRight,
                   child: GestureDetector(
@@ -1171,7 +1093,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
             ),
           ),
 
-          // 선택된 필터를 다시 탭했을 때 열리는 진하기(강도) 슬라이더 + 전체 적용 바
+          // 선택된 필터를 다시 탭했을 때 열리는 진하기(선명도) 슬라이더 + 전체 적용 바
           if (_showStrengthSlider && curItem.mode != 'original')
             Container(
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 6),
@@ -1185,7 +1107,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                   const Icon(Icons.tune, color: _tealBright, size: 16),
                   const SizedBox(width: 6),
                   Text(
-                    _tr('선명도', 'Intensity', '强度', '鮮明度'),
+                    _tr('글자 진하기', 'Ink Darkness', '字迹浓度', '文字の濃さ'),
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                   Expanded(
@@ -1220,7 +1142,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
               ),
             ),
 
-          // 3. CamScanner 스타일 하단 필터 썸네일 스트립 (강화 / 음영 제거 / 밝게하기 / 흑백 / 에코 / 그레이스케일 / 반전 / 원본)
+          // 3. 하단 필터 썸네일 스트립 (강화 / 음영 제거 / 밝게하기 / 흑백 / 반전 / 원본)
           Container(
             height: 92,
             color: const Color(0xFF181C22),
@@ -1316,10 +1238,10 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
             ),
           ),
 
-          // 4. CamScanner 스타일 하단 액션 바 (다시 찍기 | 왼쪽 | 사진 자르기 | 텍스트 추출 | [ ✓ ])
+          // 4. 하단 액션 바 (다시 찍기 | 회전 | 사진 자르기 | [ ✓ ]) — 텍스트 추출 삭제, '왼쪽' -> '회전' 변경
           Container(
             color: const Color(0xFF1B1F24),
-            padding: const EdgeInsets.fromLTRB(8, 6, 12, 8),
+            padding: const EdgeInsets.fromLTRB(12, 6, 14, 8),
             child: SafeArea(
               top: false,
               child: Row(
@@ -1332,9 +1254,10 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                       replaceIndex: _currentEditIndex,
                     ),
                   ),
+                  const SizedBox(width: 8),
                   _buildBottomToolItem(
                     icon: Icons.rotate_left_rounded,
-                    label: _tr('왼쪽', 'Rotate L', '向左旋转', '左回転'),
+                    label: _tr('회전', 'Rotate', '旋转', '回転'),
                     onTap: () {
                       setState(() {
                         curItem.rotation = (curItem.rotation + 270) % 360;
@@ -1344,6 +1267,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                       unawaited(_generateFilterThumbnails(curItem));
                     },
                   ),
+                  const SizedBox(width: 8),
                   _buildBottomToolItem(
                     icon: Icons.crop_rotate_rounded,
                     label: _tr('사진 자르기', 'Crop', '裁剪', '切り抜き'),
@@ -1355,15 +1279,10 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                       });
                     },
                   ),
-                  _buildBottomToolItem(
-                    icon: Icons.text_fields_rounded,
-                    label: _tr('텍스트 추출', 'OCR Text', '提取文字', 'テキスト抽出'),
-                    onTap: () => _extractTextFromCurrentPage(curItem),
-                  ),
                   const Spacer(),
                   // 우측 청록색 [ ✓ ] 완료(PDF 생성) 버튼
                   SizedBox(
-                    width: 62,
+                    width: 68,
                     height: 44,
                     child: FilledButton(
                       style: FilledButton.styleFrom(
@@ -1398,7 +1317,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1408,7 +1327,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
               label,
               style: TextStyle(
                 color: color,
-                fontSize: 11,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1439,7 +1358,6 @@ class _TealQuadPainter extends CustomPainter {
       ..lineTo(p3.dx, p3.dy)
       ..close();
 
-    // 바깥 어두운 마스크 + 안쪽 청록색 반투명 채움
     final full = Offset.zero & size;
     canvas.saveLayer(full, Paint());
     canvas.drawRect(full, Paint()..color = Colors.black.withValues(alpha: 0.55));
@@ -1460,7 +1378,6 @@ class _TealQuadPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(polyPath, borderPaint);
 
-    // 4개 모서리 청록색 원형 핸들
     final fillHandle = Paint()
       ..color = const Color(0xFF00E5B8)
       ..style = PaintingStyle.fill;
