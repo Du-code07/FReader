@@ -112,6 +112,7 @@ jobs:
             # 그림 속 글자 읽기(OCR, 한국어+영어) — 그림으로만 된 PPT의 목차용. 인식 모델은 앱에 포함되어 인터넷 없이 동작
             echo 'dependencies {' >> android/app/build.gradle.kts
             echo '    implementation("com.google.mlkit:text-recognition-korean:16.0.1")' >> android/app/build.gradle.kts
+            echo '    implementation("org.opencv:opencv:4.10.0")' >> android/app/build.gradle.kts
             echo '}' >> android/app/build.gradle.kts
           fi
 
