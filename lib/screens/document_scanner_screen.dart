@@ -12,7 +12,7 @@ class _ScanPageItem {
     required this.rawPath,
     required this.quad,
     this.mode = 'magic',
-    this.contrast = 0.58,
+    this.contrast = 0.50,
     this.rotation = 0,
   });
 
@@ -311,7 +311,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
     }
   }
 
-  Future<void> _processPage(_ScanPageItem item, {int maxDim = 2600}) async {
+  Future<void> _processPage(_ScanPageItem item, {int maxDim = 3200}) async {
     if (!mounted) return;
     setState(() => item.isProcessing = true);
 
@@ -377,7 +377,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
             'inputPath': item.rawPath,
             'outputPath': outPath,
             'mode': modeKey,
-            'contrast': 0.58,
+            'contrast': 0.50,
             'rotation': item.rotation,
             'quad': item.quad,
             'eraseFingers': _eraseFingers,
@@ -527,7 +527,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
           await Future.delayed(const Duration(milliseconds: 60));
         }
         if (p.processedPath == null || !await File(p.processedPath!).exists()) {
-          await _processPage(p, maxDim: 3000);
+          await _processPage(p, maxDim: 3400);
         }
         finalPaths.add(p.processedPath ?? p.rawPath);
       }
