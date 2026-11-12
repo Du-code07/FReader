@@ -270,7 +270,7 @@ class _MyEbookAppState extends State<MyEbookApp> with SingleTickerProviderStateM
             )
           : BookshelfScreen(
               isDarkMode: _isDarkMode,
-              appLang: widget.appLang,
+              appLang: _appLang,
               themeMode: _themeMode,
               onChangeThemeMode: _changeThemeMode,
               onChangeLanguage: _changeAppLanguage,
@@ -2276,7 +2276,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> with TickerProviderSt
       context,
       MaterialPageRoute(
         builder: (_) => DocumentScannerScreen(
-          appLang: _appLang,
+          appLang: widget.appLang,
           targetGroup: targetGroup,
         ),
       ),
