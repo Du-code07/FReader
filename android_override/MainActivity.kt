@@ -3153,10 +3153,12 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
         val bottomPanelHeight = dp(142f)
 
         val root = android.widget.FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Color.WHITE)
         }
 
-        cameraFrame = android.widget.FrameLayout(this)
+        cameraFrame = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(Color.WHITE)
+        }
         textureView = android.view.TextureView(this).apply {
             surfaceTextureListener = this@DocumentCameraActivity
             setOnClickListener { triggerAutoFocusPulse() }
@@ -3187,17 +3189,17 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
         }
         root.addView(cameraFrame, cameraFrameLp)
 
-        // 상단 컨트롤 바 (✕ 닫기 버튼만 유지)
+        // 상단 컨트롤 바 (흰색 배경 + 검정 ✕ 닫기 버튼)
         val topBar = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Color.WHITE)
             setPadding(dp(12f), dp(6f), dp(12f), dp(6f))
         }
 
         val closeBtn = android.widget.TextView(this).apply {
             text = "✕"
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#1E2228"))
             textSize = 21f
             setPadding(dp(12f), dp(4f), dp(12f), dp(4f))
             setOnClickListener { finishWithResult(cancelled = capturedPaths.isEmpty()) }
@@ -3257,17 +3259,17 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
         }
         root.addView(modePill, modePillLp)
 
-        // 하단 촬영 바
+        // 하단 촬영 바 (흰색 배경 + 검정 글씨, 이미지 가져오기 버튼 제거)
         val bottomPanel = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Color.WHITE)
             gravity = android.view.Gravity.CENTER
             setPadding(dp(18f), dp(6f), dp(18f), dp(12f))
         }
 
         val modeLabel = android.widget.TextView(this).apply {
             text = "스캔"
-            setTextColor(TEAL_COLOR)
+            setTextColor(Color.parseColor("#1E2228"))
             textSize = 13.5f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = android.view.Gravity.CENTER
@@ -3286,9 +3288,9 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
         thumbImageView = android.widget.ImageView(this).apply {
             scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.DKGRAY)
+                setColor(Color.LTGRAY)
                 cornerRadius = dp(8f).toFloat()
-                setStroke(dp(1.5f), Color.WHITE)
+                setStroke(dp(1.5f), Color.parseColor("#D0D5DD"))
             }
         }
         thumbContainer.addView(
@@ -3300,7 +3302,7 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
         )
         thumbBadgeView = android.widget.TextView(this).apply {
             text = "0"
-            setTextColor(Color.BLACK)
+            setTextColor(Color.WHITE)
             textSize = 11.5f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = android.view.Gravity.CENTER
@@ -3338,6 +3340,7 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(Color.WHITE)
+                setStroke(dp(1.5f), Color.parseColor("#D0D5DD"))
             }
         }
         shutterOuter.addView(
@@ -3356,21 +3359,20 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
             gravity = android.view.Gravity.CENTER
         }
         confirmBatchBtn = android.widget.TextView(this).apply {
-            text = "이미지 가져오기"
-            setTextColor(Color.WHITE)
+            text = ""
+            visibility = View.GONE
+            setTextColor(Color.parseColor("#1E2228"))
             textSize = 12.5f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = android.view.Gravity.CENTER
-            setPadding(dp(12f), dp(10f), dp(12f), dp(10f))
+            setPadding(dp(14f), dp(10f), dp(14f), dp(10f))
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.parseColor("#2A303A"))
+                setColor(TEAL_COLOR)
                 cornerRadius = dp(18f).toFloat()
             }
             setOnClickListener {
                 if (capturedPaths.isNotEmpty()) {
                     finishWithResult(cancelled = false)
-                } else {
-                    finishWithResult(cancelled = false, pickGallery = true)
                 }
             }
         }
@@ -3467,20 +3469,16 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
     private fun updateBottomCaptureState(latestBmp: Bitmap?) {
         if (capturedPaths.isEmpty()) {
             thumbContainer.visibility = View.INVISIBLE
-            confirmBatchBtn.text = "이미지 가져오기"
-            confirmBatchBtn.setTextColor(Color.WHITE)
-            confirmBatchBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.parseColor("#2A303A"))
-                cornerRadius = dp(18f).toFloat()
-            }
+            confirmBatchBtn.visibility = View.GONE
         } else {
             thumbContainer.visibility = View.VISIBLE
             thumbBadgeView.text = "${capturedPaths.size}"
             if (latestBmp != null) {
                 thumbImageView.setImageBitmap(latestBmp)
             }
+            confirmBatchBtn.visibility = View.VISIBLE
             confirmBatchBtn.text = "확인 (${capturedPaths.size}장) ✓"
-            confirmBatchBtn.setTextColor(Color.BLACK)
+            confirmBatchBtn.setTextColor(Color.parseColor("#1E2228"))
             confirmBatchBtn.background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(TEAL_COLOR)
                 cornerRadius = dp(18f).toFloat()

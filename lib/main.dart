@@ -2290,7 +2290,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> with TickerProviderSt
     final fileName = createdPdf.path.split(Platform.pathSeparator).last;
     final grpDisplay = _localizeGroupName(targetGroup);
     final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
+    messenger.removeCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
         duration: const Duration(seconds: 3),
@@ -2308,13 +2308,13 @@ class _BookshelfScreenState extends State<BookshelfScreen> with TickerProviderSt
             ),
             TextButton(
               style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF8CE63C),
+                foregroundColor: Theme.of(context).colorScheme.onInverseSurface,
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onPressed: () {
-                messenger.hideCurrentSnackBar();
+                messenger.removeCurrentSnackBar();
                 _openFile(createdPdf);
               },
               child: Text(
@@ -2328,7 +2328,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> with TickerProviderSt
     );
     Timer(const Duration(seconds: 3), () {
       if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).removeCurrentSnackBar();
       }
     });
   }
@@ -3506,7 +3506,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> with TickerProviderSt
       body: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: (_) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).removeCurrentSnackBar();
         },
         child: SafeArea(
         child: Column(

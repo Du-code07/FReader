@@ -573,20 +573,25 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
     return mode;
   }
 
-  // ── 4점 청록색 사각형(종이 인식 틀) 인터랙티브 자르기 화면 ──────────────────
+  // ── 4점 연두색 사각형(종이 인식 틀) 인터랙티브 자르기 화면 (흰색 배경 + 검정 글씨) ──
   Widget _buildQuadCropEditor(_ScanPageItem item) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121417),
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1B1F24),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF1E2228),
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close),
+          icon: const Icon(Icons.close, color: Color(0xFF1E2228)),
           onPressed: () => setState(() => _isCropping = false),
         ),
         title: Text(
-          _tr('종이 영역 맞춤 (청록색 틀 조절)', 'Adjust Document Frame', '调整文档边框', '用紙枠の調整'),
-          style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold),
+          _tr('종이 영역 맞춤', 'Adjust Document Frame', '调整文档边框', '用紙枠の調整'),
+          style: const TextStyle(
+            color: Color(0xFF1E2228),
+            fontSize: 15.5,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         actions: [
           TextButton.icon(
@@ -603,16 +608,17 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                 }
               } catch (_) {}
             },
-            icon: const Icon(Icons.auto_fix_high, color: _tealBright, size: 18),
+            icon: const Icon(Icons.auto_fix_high, color: Color(0xFF1E2228), size: 18),
             label: Text(
               _tr('자동 인식', 'Auto Detect', '自动识别', '自動認識'),
-              style: const TextStyle(color: _tealBright, fontWeight: FontWeight.bold),
+              style: const TextStyle(color: Color(0xFF1E2228), fontWeight: FontWeight.bold),
             ),
           ),
         ],
       ),
       body: Column(
         children: [
+          const Divider(height: 1, color: Color(0xFFE5E7EB)),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -670,7 +676,10 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
             ),
           ),
           Container(
-            color: const Color(0xFF1B1F24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+            ),
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
             child: SafeArea(
               top: false,
@@ -682,10 +691,10 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                         _draftQuad = [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
                       });
                     },
-                    icon: const Icon(Icons.crop_free, color: Colors.white70, size: 18),
+                    icon: const Icon(Icons.crop_free, color: Color(0xFF1E2228), size: 18),
                     label: Text(
                       _tr('전체 영역', 'Full Page', '全图', '全体'),
-                      style: const TextStyle(color: Colors.white70),
+                      style: const TextStyle(color: Color(0xFF1E2228), fontWeight: FontWeight.w600),
                     ),
                   ),
                   const Spacer(),
@@ -724,26 +733,30 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
   Widget build(BuildContext context) {
     if (_pages.isEmpty) {
       return Scaffold(
-        backgroundColor: const Color(0xFF121417),
+        backgroundColor: Colors.white,
         appBar: AppBar(
-          backgroundColor: const Color(0xFF1B1F24),
-          foregroundColor: Colors.white,
-          title: Text(_tr('문서 스캔', 'Document Scan', '文档扫描', '文書スキャン')),
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF1E2228),
+          elevation: 0,
+          title: Text(
+            _tr('문서 스캔', 'Document Scan', '文档扫描', '文書スキャン'),
+            style: const TextStyle(color: Color(0xFF1E2228), fontWeight: FontWeight.bold),
+          ),
         ),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.document_scanner_outlined, size: 64, color: _tealBright),
+              const Icon(Icons.document_scanner_outlined, size: 64, color: Color(0xFF1E2228)),
               const SizedBox(height: 16),
               Text(
                 _tr(
-                  '카메라로 문서를 스캔하거나 갤러리에서 사진을 불러오세요.',
-                  'Scan documents with the camera or import photos from gallery.',
-                  '使用相机扫描文档或从相册导入照片。',
-                  'カメラで書類をスキャンするか、ギャラリーから読み込んでください。',
+                  '카메라로 문서를 촬영하여 스캔하세요.',
+                  'Scan documents with the camera.',
+                  '使用相机拍摄扫描文档。',
+                  'カメラで書類を撮影してスキャンしてください。',
                 ),
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                style: const TextStyle(color: Color(0xFF4B5563), fontSize: 14),
               ),
               const SizedBox(height: 22),
               FilledButton.icon(
@@ -754,14 +767,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                 ),
                 onPressed: () => _openNativeCamera(batchMode: false),
                 icon: const Icon(Icons.camera_alt_outlined),
-                label: Text(_tr('무음 스캔 카메라 열기', 'Open Silent Scan Camera', '打开静音扫描相机', '無音スキャンカメラを開く')),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.white70),
-                onPressed: () => _pickPhotosFromGallery(),
-                icon: const Icon(Icons.photo_library_outlined, size: 18),
-                label: Text(_tr('이미지 가져오기', 'Import Images', '导入图片', '画像を取り込む')),
+                label: Text(_tr('스캔 카메라 열기', 'Open Scan Camera', '打开扫描相机', 'スキャンカメラを開く')),
               ),
             ],
           ),
@@ -777,13 +783,13 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121417),
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1B1F24),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF1E2228),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E2228)),
           onPressed: () => Navigator.pop(context),
         ),
         titleSpacing: 0,
@@ -799,14 +805,14 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                     padding: const EdgeInsets.only(bottom: 2),
                     decoration: const BoxDecoration(
                       border: Border(
-                        bottom: BorderSide(color: Colors.white38, width: 1.0),
+                        bottom: BorderSide(color: Color(0xFF9CA3AF), width: 1.0),
                       ),
                     ),
                     child: Text(
                       _docTitle,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: Color(0xFF1E2228),
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -814,29 +820,17 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(Icons.edit_outlined, size: 18, color: Colors.white70),
+                const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF4B5563)),
               ],
             ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => _openNativeCamera(batchMode: true),
-            child: Text(
-              _tr('추가', 'Add', '添加', '追加'),
-              style: const TextStyle(
-                color: _tealBright,
-                fontSize: 15.5,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
+        // 상단 우측 '추가' 버튼 삭제 완료
       ),
       body: Column(
         children: [
-          // 1. 중앙 스캔 문서 미리보기 카드 (좌상단 원형 휴지통 아이콘 포함)
+          const Divider(height: 1, color: Color(0xFFE5E7EB)),
+          // 1. 중앙 스캔 문서 미리보기 카드 (흰색 배경 + 좌상단 원형 휴지통 아이콘 포함)
           Expanded(
             child: PageView.builder(
               controller: _pageController,
@@ -862,11 +856,12 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
+                          border: Border.all(color: const Color(0xFFE5E7EB)),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              blurRadius: 14,
-                              offset: const Offset(0, 4),
+                              color: Colors.black.withValues(alpha: 0.10),
+                              blurRadius: 12,
+                              offset: const Offset(0, 3),
                             ),
                           ],
                         ),
@@ -961,7 +956,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                                               height: 16,
                                               child: CircularProgressIndicator(
                                                 strokeWidth: 2,
-                                                color: _tealBright,
+                                                color: Colors.white,
                                               ),
                                             ),
                                             const SizedBox(width: 8),
@@ -998,7 +993,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF232830),
+                    color: const Color(0xFFF0F2F5),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -1020,7 +1015,9 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                             child: Icon(
                               Icons.play_arrow_rounded,
                               size: 16,
-                              color: _currentEditIndex > 0 ? Colors.white : Colors.white24,
+                              color: _currentEditIndex > 0
+                                  ? const Color(0xFF1E2228)
+                                  : const Color(0xFFB0B7C3),
                             ),
                           ),
                         ),
@@ -1030,7 +1027,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                         child: Text(
                           '${_currentEditIndex + 1}/${_pages.length}',
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: Color(0xFF1E2228),
                             fontSize: 13.5,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1051,8 +1048,8 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                             Icons.play_arrow_rounded,
                             size: 16,
                             color: _currentEditIndex < _pages.length - 1
-                                ? Colors.white
-                                : Colors.white24,
+                                ? const Color(0xFF1E2228)
+                                : const Color(0xFFB0B7C3),
                           ),
                         ),
                       ),
@@ -1069,19 +1066,19 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
                       decoration: BoxDecoration(
                         color: _showOriginalCompare
-                            ? _teal
-                            : const Color(0xFF232830),
+                            ? const Color(0xFFDDE3EA)
+                            : const Color(0xFFF0F2F5),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.compare_rounded, color: Colors.white, size: 16),
+                          const Icon(Icons.compare_rounded, color: Color(0xFF1E2228), size: 16),
                           const SizedBox(width: 5),
                           Text(
                             _tr('비교', 'Compare', '对比', '比較'),
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: Color(0xFF1E2228),
                               fontSize: 12.5,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1101,23 +1098,23 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 6),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF232830),
+                color: const Color(0xFFF0F2F5),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.tune, color: _tealBright, size: 16),
+                  const Icon(Icons.tune, color: Color(0xFF1E2228), size: 16),
                   const SizedBox(width: 6),
                   Text(
                     _tr('글자 진하기', 'Ink Darkness', '字迹浓度', '文字の濃さ'),
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    style: const TextStyle(color: Color(0xFF1E2228), fontSize: 12),
                   ),
                   Expanded(
                     child: SliderTheme(
                       data: SliderTheme.of(context).copyWith(
-                        activeTrackColor: _tealBright,
-                        thumbColor: _tealBright,
-                        inactiveTrackColor: Colors.white24,
+                        activeTrackColor: _teal,
+                        thumbColor: _teal,
+                        inactiveTrackColor: const Color(0xFFD0D5DD),
                       ),
                       child: Slider(
                         value: curItem.contrast,
@@ -1134,7 +1131,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                       child: Text(
                         _tr('전체 적용', 'Apply All', '全部应用', '全ページ適用'),
                         style: const TextStyle(
-                          color: _tealBright,
+                          color: Color(0xFF1E2228),
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
@@ -1147,7 +1144,10 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
           // 3. 하단 필터 썸네일 스트립 (강화 / 음영 제거 / 밝게하기 / 흑백 / 반전 / 원본)
           Container(
             height: 92,
-            color: const Color(0xFF181C22),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF7F8FA),
+              border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+            ),
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               scrollDirection: Axis.horizontal,
@@ -1179,9 +1179,10 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                   child: Container(
                     width: 68,
                     decoration: BoxDecoration(
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: selected ? _teal : Colors.white24,
+                        color: selected ? _teal : const Color(0xFFD0D5DD),
                         width: selected ? 2.2 : 1.0,
                       ),
                     ),
@@ -1201,12 +1202,12 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.black45,
+                                color: Colors.black54,
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Icon(
                                 Icons.linear_scale,
-                                color: _tealBright,
+                                color: Colors.white,
                                 size: 16,
                               ),
                             ),
@@ -1240,14 +1241,23 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
             ),
           ),
 
-          // 4. 하단 액션 바 (다시 찍기 | 회전 | 사진 자르기 | [ ✓ ]) — 텍스트 추출 삭제, '왼쪽' -> '회전' 변경
+          // 4. 하단 액션 바 (추가 [카메라+] | 다시 찍기 | 회전 | 사진 자르기 | [ ✓ ])
           Container(
-            color: const Color(0xFF1B1F24),
-            padding: const EdgeInsets.fromLTRB(12, 6, 14, 8),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+            ),
+            padding: const EdgeInsets.fromLTRB(8, 6, 12, 8),
             child: SafeArea(
               top: false,
               child: Row(
                 children: [
+                  _buildBottomToolItem(
+                    icon: Icons.add_a_photo_outlined,
+                    label: _tr('추가', 'Add', '添加', '追加'),
+                    onTap: () => _openNativeCamera(batchMode: true),
+                  ),
+                  const SizedBox(width: 4),
                   _buildBottomToolItem(
                     icon: Icons.cameraswitch_outlined,
                     label: _tr('다시 찍기', 'Retake', '重拍', '撮り直し'),
@@ -1256,7 +1266,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                       replaceIndex: _currentEditIndex,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   _buildBottomToolItem(
                     icon: Icons.rotate_left_rounded,
                     label: _tr('회전', 'Rotate', '旋转', '回転'),
@@ -1269,11 +1279,10 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                       unawaited(_generateFilterThumbnails(curItem));
                     },
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   _buildBottomToolItem(
                     icon: Icons.crop_rotate_rounded,
                     label: _tr('사진 자르기', 'Crop', '裁剪', '切り抜き'),
-                    active: curItem.hasCustomQuad,
                     onTap: () {
                       setState(() {
                         _draftQuad = List<double>.from(curItem.quad);
@@ -1282,9 +1291,9 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
                     },
                   ),
                   const Spacer(),
-                  // 우측 청록색 [ ✓ ] 완료(PDF 생성) 버튼
+                  // 우측 연두색 [ ✓ ] 완료(PDF 생성) 버튼
                   SizedBox(
-                    width: 68,
+                    width: 64,
                     height: 44,
                     child: FilledButton(
                       style: FilledButton.styleFrom(
@@ -1312,14 +1321,13 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
     required IconData icon,
     required String label,
     required VoidCallback onTap,
-    bool active = false,
   }) {
-    final color = active ? _tealBright : Colors.white;
+    const color = Color(0xFF1E2228);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1327,10 +1335,10 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
             const SizedBox(height: 3),
             Text(
               label,
-              style: TextStyle(
+              style: const TextStyle(
                 color: color,
                 fontSize: 11.5,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -1340,7 +1348,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
   }
 }
 
-/// 4점 청록색(#00E5B8) 종이 크기 인식 틀 페인터
+/// 4점 연두색(#8CE63C) 종이 크기 인식 틀 페인터
 class _TealQuadPainter extends CustomPainter {
   _TealQuadPainter({required this.quad});
   final List<double> quad;
@@ -1362,7 +1370,7 @@ class _TealQuadPainter extends CustomPainter {
 
     final full = Offset.zero & size;
     canvas.saveLayer(full, Paint());
-    canvas.drawRect(full, Paint()..color = Colors.black.withValues(alpha: 0.55));
+    canvas.drawRect(full, Paint()..color = Colors.black.withValues(alpha: 0.45));
     canvas.drawPath(polyPath, Paint()..blendMode = BlendMode.clear);
     canvas.restore();
 
