@@ -96,7 +96,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
   List<(String, String)> get _filterDefs => [
         ('magic', _tr('강화', 'Enhance', '增强', '強調')),
         ('noshadow', _tr('음영 제거', 'No Shadow', '去阴影', '影除去')),
-        ('brighten', _tr('밝게하기', 'Brighten', '增亮', '明るく')),
         ('scan_bw', _tr('흑백', 'B&W', '黑白', '白黒')),
         ('invert', _tr('반전', 'Invert', '反色', '反転')),
         ('original', _tr('원본', 'Original', '原图', '元の写真')),
@@ -1241,56 +1240,60 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
             ),
           ),
 
-          // 4. 하단 액션 바 (추가 [카메라+] | 다시 찍기 | 회전 | 사진 자르기 | [ ✓ ])
+          // 4. 하단 액션 바 (4개 기능 균등 배치: 추가 | 다시 찍기 | 회전 | 사진 자르기 + 우측 [ ✓ ])
           Container(
             decoration: const BoxDecoration(
               color: Colors.white,
               border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
             ),
-            padding: const EdgeInsets.fromLTRB(8, 6, 12, 8),
+            padding: const EdgeInsets.fromLTRB(8, 6, 14, 8),
             child: SafeArea(
               top: false,
               child: Row(
                 children: [
-                  _buildBottomToolItem(
-                    icon: Icons.add_a_photo_outlined,
-                    label: _tr('추가', 'Add', '添加', '追加'),
-                    onTap: () => _openNativeCamera(batchMode: true),
-                  ),
-                  const SizedBox(width: 4),
-                  _buildBottomToolItem(
-                    icon: Icons.cameraswitch_outlined,
-                    label: _tr('다시 찍기', 'Retake', '重拍', '撮り直し'),
-                    onTap: () => _openNativeCamera(
-                      batchMode: false,
-                      replaceIndex: _currentEditIndex,
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildBottomToolItem(
+                          icon: Icons.add_a_photo_outlined,
+                          label: _tr('추가', 'Add', '添加', '追加'),
+                          onTap: () => _openNativeCamera(batchMode: true),
+                        ),
+                        _buildBottomToolItem(
+                          icon: Icons.cameraswitch_outlined,
+                          label: _tr('다시 찍기', 'Retake', '重拍', '撮り直し'),
+                          onTap: () => _openNativeCamera(
+                            batchMode: false,
+                            replaceIndex: _currentEditIndex,
+                          ),
+                        ),
+                        _buildBottomToolItem(
+                          icon: Icons.rotate_left_rounded,
+                          label: _tr('회전', 'Rotate', '旋转', '回転'),
+                          onTap: () {
+                            setState(() {
+                              curItem.rotation = (curItem.rotation + 270) % 360;
+                              curItem.filterThumbPaths.clear();
+                            });
+                            unawaited(_processPage(curItem));
+                            unawaited(_generateFilterThumbnails(curItem));
+                          },
+                        ),
+                        _buildBottomToolItem(
+                          icon: Icons.crop_rotate_rounded,
+                          label: _tr('사진 자르기', 'Crop', '裁剪', '切り抜き'),
+                          onTap: () {
+                            setState(() {
+                              _draftQuad = List<double>.from(curItem.quad);
+                              _isCropping = true;
+                            });
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  _buildBottomToolItem(
-                    icon: Icons.rotate_left_rounded,
-                    label: _tr('회전', 'Rotate', '旋转', '回転'),
-                    onTap: () {
-                      setState(() {
-                        curItem.rotation = (curItem.rotation + 270) % 360;
-                        curItem.filterThumbPaths.clear();
-                      });
-                      unawaited(_processPage(curItem));
-                      unawaited(_generateFilterThumbnails(curItem));
-                    },
-                  ),
-                  const SizedBox(width: 4),
-                  _buildBottomToolItem(
-                    icon: Icons.crop_rotate_rounded,
-                    label: _tr('사진 자르기', 'Crop', '裁剪', '切り抜き'),
-                    onTap: () {
-                      setState(() {
-                        _draftQuad = List<double>.from(curItem.quad);
-                        _isCropping = true;
-                      });
-                    },
-                  ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   // 우측 연두색 [ ✓ ] 완료(PDF 생성) 버튼
                   SizedBox(
                     width: 64,

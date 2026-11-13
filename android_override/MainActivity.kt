@@ -3014,6 +3014,91 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                 }
             }
         }
+
+        // 4. 문구(글씨·표·도표·쪽번호)가 없는 바깥쪽 빈 여백을 100% 순백색(#FFFFFF)으로 덮기:
+        //    행별로 실제 문구가 존재하는 좌·우 경계(rowLeft[y] ~ rowRight[y])를 찾고,
+        //    문구 바깥쪽의 빈 상·하·좌·우 여백 및 접힌 모서리 그림자를 깔끔하게 순백색으로 덮는다.
+        val pad = (minOf(w, h) * 0.024f).toInt().coerceIn(8, 72)
+        val ix0 = (w * 0.08f).toInt()
+        val ix1 = (w * 0.92f).toInt()
+        val iy0 = (h * 0.05f).toInt()
+        val iy1 = (h * 0.90f).toInt()
+        val bx = (w * 0.032f).toInt().coerceAtLeast(4)
+        val by = (h * 0.026f).toInt().coerceAtLeast(4)
+        val cornerX = (w * 0.12f).toInt()
+        val cornerY = (h * 0.10f).toInt()
+
+        val rowMin = IntArray(h) { w }
+        val rowMax = IntArray(h) { -1 }
+
+        for (y in by until (h - by)) {
+            val row = y * w
+            val inInteriorY = y in iy0..iy1
+            val inBottomCornerY = y >= h - cornerY
+            var firstX = w
+            var lastX = -1
+            var inkCount = 0
+
+            val rUp = maxOf(0, y - 3) * w
+            val rDn = minOf(h - 1, y + 3) * w
+
+            for (x in bx until (w - bx)) {
+                if (inBottomCornerY && (x < cornerX || x >= w - cornerX)) continue
+                val idx = row + x
+                val v = normLum[idx]
+                val inInterior = inInteriorY && (x in ix0..ix1)
+                val lumLimit = if (inInterior) 185 else 145
+                if (v < lumLimit) {
+                    val xL = maxOf(0, x - 3)
+                    val xR = minOf(w - 1, x + 3)
+                    val localMax = maxOf(
+                        maxOf(normLum[row + xL], normLum[row + xR]),
+                        maxOf(normLum[rUp + x], normLum[rDn + x])
+                    )
+                    val contrastNeed = if (inInterior) 28 else 48
+                    if (localMax - v >= contrastNeed) {
+                        if (x < firstX) firstX = x
+                        if (x > lastX) lastX = x
+                        inkCount++
+                    }
+                }
+            }
+            if (inkCount >= 2 && firstX <= lastX) {
+                rowMin[y] = maxOf(0, firstX - pad)
+                rowMax[y] = minOf(w - 1, lastX + pad)
+            }
+        }
+
+        val rowLeft = IntArray(h) { w }
+        val rowRight = IntArray(h) { -1 }
+        var anyContentFound = false
+        for (y in 0 until h) {
+            val y0 = maxOf(0, y - pad)
+            val y1 = minOf(h - 1, y + pad)
+            var minL = w
+            var maxR = -1
+            for (yy in y0..y1) {
+                if (rowMin[yy] < minL) minL = rowMin[yy]
+                if (rowMax[yy] > maxR) maxR = rowMax[yy]
+            }
+            rowLeft[y] = minL
+            rowRight[y] = maxR
+            if (minL <= maxR) anyContentFound = true
+        }
+
+        if (anyContentFound) {
+            for (y in 0 until h) {
+                val row = y * w
+                val l = rowLeft[y]
+                val r = rowRight[y]
+                if (l > r) {
+                    for (x in 0 until w) pixels[row + x] = fillWhite
+                } else {
+                    for (x in 0 until l) pixels[row + x] = fillWhite
+                    for (x in (r + 1) until w) pixels[row + x] = fillWhite
+                }
+            }
+        }
     }
 
     private fun eraseEdgeFingersInPlace(pixels: IntArray, w: Int, h: Int) {
@@ -3589,7 +3674,6 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
     private lateinit var textureView: android.view.TextureView
     private lateinit var overlayView: DocumentQuadOverlayView
     private lateinit var flashIconView: android.widget.ImageView
-    private lateinit var flashTextView: android.widget.TextView
     private lateinit var singleTabBtn: android.widget.TextView
     private lateinit var batchTabBtn: android.widget.TextView
     private lateinit var thumbBadgeView: android.widget.TextView
@@ -3855,14 +3939,8 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
             }
         )
 
-        val flashBtnContainer = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(dp(12f), dp(6f), dp(12f), dp(6f))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.parseColor("#F0F2F5"))
-                cornerRadius = dp(16f).toFloat()
-            }
+        val flashBtnContainer = android.widget.FrameLayout(this).apply {
+            setPadding(dp(10f), dp(8f), dp(10f), dp(8f))
             setOnClickListener {
                 flashMode = (flashMode + 1) % 3
                 updateFlashUiAndHardware()
@@ -3871,15 +3949,10 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
         flashIconView = android.widget.ImageView(this).apply {
             setImageBitmap(getFlashIconBitmap(flashMode))
         }
-        flashTextView = android.widget.TextView(this).apply {
-            text = "끄기"
-            setTextColor(Color.parseColor("#1E2228"))
-            textSize = 13f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(dp(5f), 0, 0, 0)
-        }
-        flashBtnContainer.addView(flashIconView, android.widget.LinearLayout.LayoutParams(dp(18f), dp(18f)))
-        flashBtnContainer.addView(flashTextView)
+        flashBtnContainer.addView(
+            flashIconView,
+            android.widget.FrameLayout.LayoutParams(dp(24f), dp(24f), android.view.Gravity.CENTER)
+        )
 
         topBar.addView(
             flashBtnContainer,
@@ -3950,7 +4023,7 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
             orientation = android.widget.LinearLayout.VERTICAL
             setBackgroundColor(Color.WHITE)
             gravity = android.view.Gravity.CENTER
-            setPadding(dp(18f), dp(6f), dp(18f), dp(12f))
+            setPadding(0, dp(6f), 0, dp(12f))
         }
 
         val modeLabel = android.widget.TextView(this).apply {
@@ -3963,9 +4036,16 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
         }
         bottomPanel.addView(modeLabel)
 
-        val actionRow = android.widget.RelativeLayout(this)
+        // 3등분(1:1:1) 수평 레이아웃을 사용하여:
+        // - 셔터 버튼은 화면 정중앙에 배치
+        // - 왼쪽 이미지 아이콘/썸네일은 [화면 왼쪽 끝 ~ 셔터 버튼]의 정중앙에 배치!
+        val actionRow = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            weightSum = 3f
+        }
 
-        // 셔터 왼쪽: 항상 표시 (찍은 사진이 없으면 이미지 아이콘, 찍은 사진이 있으면 썸네일 + 장수 배지)
+        val leftZone = android.widget.FrameLayout(this)
         thumbContainer = android.widget.FrameLayout(this).apply {
             visibility = View.VISIBLE
             setOnClickListener {
@@ -3991,10 +4071,7 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
         }
         thumbContainer.addView(
             thumbImageView,
-            android.widget.FrameLayout.LayoutParams(dp(52f), dp(52f)).apply {
-                topMargin = dp(8f)
-                rightMargin = dp(6f)
-            }
+            android.widget.FrameLayout.LayoutParams(dp(52f), dp(52f), android.view.Gravity.CENTER)
         )
         thumbBadgeView = android.widget.TextView(this).apply {
             text = "0"
@@ -4017,14 +4094,16 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
                 android.view.Gravity.TOP or android.view.Gravity.END
             )
         )
-        actionRow.addView(
+        leftZone.addView(
             thumbContainer,
-            android.widget.RelativeLayout.LayoutParams(dp(62f), dp(68f)).apply {
-                addRule(android.widget.RelativeLayout.ALIGN_PARENT_LEFT)
-                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-            }
+            android.widget.FrameLayout.LayoutParams(dp(64f), dp(64f), android.view.Gravity.CENTER)
+        )
+        actionRow.addView(
+            leftZone,
+            android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
         )
 
+        val centerZone = android.widget.FrameLayout(this)
         val shutterOuter = android.widget.FrameLayout(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
@@ -4044,17 +4123,16 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
             shutterInner,
             android.widget.FrameLayout.LayoutParams(dp(56f), dp(56f), android.view.Gravity.CENTER)
         )
-        actionRow.addView(
+        centerZone.addView(
             shutterOuter,
-            android.widget.RelativeLayout.LayoutParams(dp(72f), dp(72f)).apply {
-                addRule(android.widget.RelativeLayout.CENTER_IN_PARENT)
-            }
+            android.widget.FrameLayout.LayoutParams(dp(72f), dp(72f), android.view.Gravity.CENTER)
+        )
+        actionRow.addView(
+            centerZone,
+            android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
         )
 
-        val rightBox = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER
-        }
+        val rightZone = android.widget.FrameLayout(this)
         confirmBatchBtn = android.widget.TextView(this).apply {
             text = ""
             visibility = View.GONE
@@ -4073,16 +4151,17 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
                 }
             }
         }
-        rightBox.addView(confirmBatchBtn)
-        actionRow.addView(
-            rightBox,
-            android.widget.RelativeLayout.LayoutParams(
+        rightZone.addView(
+            confirmBatchBtn,
+            android.widget.FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                addRule(android.widget.RelativeLayout.ALIGN_PARENT_RIGHT)
-                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-            }
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.CENTER
+            )
+        )
+        actionRow.addView(
+            rightZone,
+            android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
         )
 
         bottomPanel.addView(
@@ -4122,11 +4201,6 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
 
     private fun updateFlashUiAndHardware() {
         flashIconView.setImageBitmap(getFlashIconBitmap(flashMode))
-        flashTextView.text = when (flashMode) {
-            1 -> "오토"
-            2 -> "켜기"
-            else -> "끄기"
-        }
         applyFlashModeToSession(forceTorchForAutoCapture = false)
     }
 
