@@ -1348,7 +1348,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
   }
 }
 
-/// 4점 연두색(#8CE63C) 종이 크기 인식 틀 페인터
+/// 갤럭시 카메라 스타일 4점 흰색 L자 브래킷(┌ ┐ ┘ └) 종이 영역 페인터
 class _TealQuadPainter extends CustomPainter {
   _TealQuadPainter({required this.quad});
   final List<double> quad;
@@ -1356,50 +1356,68 @@ class _TealQuadPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (quad.length != 8) return;
-    final p0 = Offset(quad[0] * size.width, quad[1] * size.height);
-    final p1 = Offset(quad[2] * size.width, quad[3] * size.height);
-    final p2 = Offset(quad[4] * size.width, quad[5] * size.height);
-    final p3 = Offset(quad[6] * size.width, quad[7] * size.height);
+    final pts = <Offset>[
+      Offset(quad[0] * size.width, quad[1] * size.height),
+      Offset(quad[2] * size.width, quad[3] * size.height),
+      Offset(quad[4] * size.width, quad[5] * size.height),
+      Offset(quad[6] * size.width, quad[7] * size.height),
+    ];
 
     final polyPath = Path()
-      ..moveTo(p0.dx, p0.dy)
-      ..lineTo(p1.dx, p1.dy)
-      ..lineTo(p2.dx, p2.dy)
-      ..lineTo(p3.dx, p3.dy)
+      ..moveTo(pts[0].dx, pts[0].dy)
+      ..lineTo(pts[1].dx, pts[1].dy)
+      ..lineTo(pts[2].dx, pts[2].dy)
+      ..lineTo(pts[3].dx, pts[3].dy)
       ..close();
 
+    // 바깥 영역만 살짝 어둡게 처리하여 종이 영역을 돋보이게 함
     final full = Offset.zero & size;
     canvas.saveLayer(full, Paint());
-    canvas.drawRect(full, Paint()..color = Colors.black.withValues(alpha: 0.45));
+    canvas.drawRect(full, Paint()..color = Colors.black.withValues(alpha: 0.38));
     canvas.drawPath(polyPath, Paint()..blendMode = BlendMode.clear);
     canvas.restore();
 
-    canvas.drawPath(
-      polyPath,
-      Paint()
-        ..color = const Color(0x248CE63C)
-        ..style = PaintingStyle.fill,
-    );
-
-    final borderPaint = Paint()
-      ..color = const Color(0xFF8CE63C)
+    // 은은한 흰색 테두리 가이드선
+    final thinBorder = Paint()
+      ..color = Colors.white.withValues(alpha: 0.55)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0
-      ..strokeJoin = StrokeJoin.round;
-    canvas.drawPath(polyPath, borderPaint);
+      ..strokeWidth = 1.5;
+    canvas.drawPath(polyPath, thinBorder);
 
-    final fillHandle = Paint()
-      ..color = const Color(0xFF8CE63C)
-      ..style = PaintingStyle.fill;
-    final strokeHandle = Paint()
+    // 4개 모서리에 갤럭시 스타일 굵은 흰색 L자 브래킷 (┌ ┐ ┘ └) 표시
+    final bracketPath = Path();
+    const double maxArm = 28.0;
+    for (int i = 0; i < 4; i++) {
+      final p = pts[i];
+      final prev = pts[(i + 3) % 4];
+      final next = pts[(i + 1) % 4];
+      final v1 = prev - p;
+      final v2 = next - p;
+      final l1 = v1.distance.clamp(1.0, double.infinity);
+      final l2 = v2.distance.clamp(1.0, double.infinity);
+      final arm = (0.24 * (l1 < l2 ? l1 : l2)).clamp(10.0, maxArm);
+      final a1 = p + (v1 / l1) * arm;
+      final a2 = p + (v2 / l2) * arm;
+      bracketPath.moveTo(a1.dx, a1.dy);
+      bracketPath.lineTo(p.dx, p.dy);
+      bracketPath.lineTo(a2.dx, a2.dy);
+    }
+
+    final shadowPaint = Paint()
+      ..color = Colors.black54
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(bracketPath, shadowPaint);
+
+    final bracketPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-
-    for (final pt in [p0, p1, p2, p3]) {
-      canvas.drawCircle(pt, 9.5, fillHandle);
-      canvas.drawCircle(pt, 9.5, strokeHandle);
-    }
+      ..strokeWidth = 4.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(bracketPath, bracketPaint);
   }
 
   @override
