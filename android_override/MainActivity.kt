@@ -3011,7 +3011,7 @@ class MainActivity : FlutterActivity(), SensorEventListener {
      * - 불필요한 중복 공백을 단일 공백으로 정돈하여 워드처럼 균일한 자간·어간 보장
      */
     private fun cleanRecognizedAcademicText(raw: String): String {
-        var s = raw.trim().replace(Regex("\s+"), " ")
+        var s = raw.trim().replace(Regex("\\s+"), " ")
         if (s.isEmpty()) return s
 
         // 문두 불릿 기호 정돈
@@ -3456,7 +3456,7 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                     canvas.drawText(bLine.text, w * 0.5f, baseY, textPaint)
                 } else {
                     // 소제목(1. 음소, (1) 자음, a), b), c), d))은 약간 굵게, 일반 설명 줄은 일반 굵기로하되 크기는 bodyFontSize로 100% 통일!
-                    val isSubHeading = bLine.text.matches(Regex("^([0-9]+\.|\([0-9]+\)|[a-d]\)).*"))
+                    val isSubHeading = bLine.text.matches(Regex("^([0-9]+\\.|\\([0-9]+\\)|[a-d]\\)).*"))
                     textPaint.typeface = if (isSubHeading) typefaceBold else typefaceNormal
                     textPaint.textSize = bodyFontSize
 
