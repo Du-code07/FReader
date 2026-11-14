@@ -95,6 +95,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen>
   // 에코, 그레이스케일 제거 -> 6종 핵심 필터 구성
   List<(String, String)> get _filterDefs => [
         ('magic', _tr('강화', 'Enhance', '增强', '強調')),
+        ('word_doc', _tr('워드 변환', 'Word Doc', '文档重绘', 'ワード 변환')),
         ('noshadow', _tr('음영 제거', 'No Shadow', '去阴影', '影除去')),
         ('scan_bw', _tr('흑백', 'B&W', '黑白', '白黒')),
         ('invert', _tr('반전', 'Invert', '反色', '反転')),

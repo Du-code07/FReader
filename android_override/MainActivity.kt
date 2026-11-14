@@ -2841,6 +2841,11 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                     }
                     pixels[idx] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
                 }
+                "word_doc" -> {
+                    // 워드 변환 모드의 기본 베이스로 선명한 흑백 계조를 먼저 생성
+                    val v = lut[rel]
+                    pixels[idx] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+                }
                 "invert" -> {
                     val v = lut[rel]
                     val inv = (255 - v).coerceIn(18, 250)
@@ -2850,9 +2855,363 @@ class MainActivity : FlutterActivity(), SensorEventListener {
         }
 
         // 6. 조명 정규화 완료 후 손가락·테두리 이물질·반대쪽 책 페이지 잘린 글씨 자동 보정
-        //    (이미 배경이 순백색 #FFFFFF로 정규화된 뒤에 순백색으로 지우므로 단차나 얼룩이 절대 생기지 않음!)
         if (w >= 80 && h >= 80) {
             autoCleanFingersAndOuterClutterAfterEnhance(pixels, normLum, w, h, mode)
+        }
+
+        // 7. [방식 A] 희미하거나 끊어진 표(Table) 가로·세로 테두리 선 및 밑줄을 찾아 칼같이 선명한 직선으로 복원
+        if (w >= 160 && h >= 160 && (mode == "magic" || mode == "noshadow" || mode == "scan_bw" || mode == "word_doc")) {
+            reconstructFaintTableLinesInPlace(pixels, normLum, w, h, mode)
+        }
+
+        // 8. [방식 B] '워드 변환(word_doc)' 모드일 때:
+        //    ML Kit 한국어/영어 OCR로 글자·표 칸·제목 크기·들여쓰기 배치를 인식하여
+        //    새 하얀 도화지 위에 워드(Word)처럼 깨끗한 디지털 폰트와 벡터 표 선으로 문서를 새로 그려냄!
+        if (mode == "word_doc" && w >= 200 && h >= 200) {
+            rebuildAsDigitalWordDocumentInPlace(pixels, normLum, w, h)
+        }
+    }
+
+    /**
+     * [방식 A] 희미하게 찍힌 표(Table) 가로·세로 선분 및 밑줄 자동 벡터 직선 복원:
+     * - 글자 획(짧은 곡선/획)은 건드리지 않고, 긴 수평 구조 요소(w/9 이상) 및 수직 구조 요소(h/22 이상)를 만족하는
+     *   실제 표 테두리 선과 밑줄만 정확히 찾아내어 끊어진 구간을 잇고 진하고 선명한 직선으로 다시 그어준다.
+     */
+    private fun reconstructFaintTableLinesInPlace(
+        pixels: IntArray,
+        normLum: IntArray,
+        w: Int,
+        h: Int,
+        mode: String
+    ) {
+        val lineColor = if (mode == "invert") {
+            0xFFF2F2F2.toInt()
+        } else if (mode == "scan_bw") {
+            0xFF000000.toInt()
+        } else {
+            0xFF22252A.toInt()
+        }
+
+        val minHRun = maxOf(28, w / 9)
+        val minVRun = maxOf(24, h / 22)
+        val marginX = maxOf(4, w / 40)
+        val marginY = maxOf(4, h / 40)
+
+        // 1. 가로 표 선 및 밑줄 복원:
+        //    희미한 선(normLum < 228 이고 위·아래 4px 종이보다 11 이상 어두운 얇은 수평선)까지 모두 잡아냄
+        val hCand = BooleanArray(w)
+        for (y in marginY until (h - marginY)) {
+            val row = y * w
+            val rUp1 = maxOf(0, y - 1) * w
+            val rDn1 = minOf(h - 1, y + 1) * w
+            val rUp4 = maxOf(0, y - 4) * w
+            val rDn4 = minOf(h - 1, y + 4) * w
+
+            var count = 0
+            for (x in marginX until (w - marginX)) {
+                val core = minOf(normLum[row + x], minOf(normLum[rUp1 + x], normLum[rDn1 + x]))
+                val upBg = normLum[rUp4 + x]
+                val dnBg = normLum[rDn4 + x]
+                val isThinLine = core < 228 && upBg >= 198 && dnBg >= 198 && (minOf(upBg, dnBg) - core >= 11)
+                hCand[x] = isThinLine
+                if (isThinLine) count++
+            }
+            if (count < minHRun / 2) continue
+
+            // 최대 6px 이내의 미세 끊김 연결(Horizontal Closing)
+            var lastTrue = -999
+            for (x in marginX until (w - marginX)) {
+                if (hCand[x]) {
+                    if (x - lastTrue in 2..7) {
+                        for ( fillX in (lastTrue + 1) until x) hCand[fillX] = true
+                    }
+                    lastTrue = x
+                }
+            }
+
+            // 연속 길이 minHRun 이상인 실제 표 가로선/밑줄만 진하고 반듯하게 복원
+            var runStart = -1
+            for (x in marginX until (w - marginX)) {
+                if (hCand[x]) {
+                    if (runStart < 0) runStart = x
+                } else {
+                    if (runStart >= 0 && (x - runStart) >= minHRun) {
+                        for (xx in runStart until x) {
+                            // 해당 열에서 가장 어두운 중심 행(y-1, y, y+1)에 선명한 직선 픽셀 기록
+                            val c0 = normLum[rUp1 + xx]
+                            val c1 = normLum[row + xx]
+                            val c2 = normLum[rDn1 + xx]
+                            val targetRow = if (c0 < c1 && c0 <= c2) rUp1 else if (c2 < c1 && c2 < c0) rDn1 else row
+                            pixels[targetRow + xx] = lineColor
+                        }
+                    }
+                    runStart = -1
+                }
+            }
+            if (runStart >= 0 && (w - marginX - runStart) >= minHRun) {
+                for (xx in runStart until (w - marginX)) {
+                    pixels[row + xx] = lineColor
+                }
+            }
+        }
+
+        // 2. 세로 표 칸막이 선 복원
+        val vCand = BooleanArray(h)
+        for (x in marginX until (w - marginX)) {
+            val xL1 = maxOf(0, x - 1)
+            val xR1 = minOf(w - 1, x + 1)
+            val xL4 = maxOf(0, x - 4)
+            val xR4 = minOf(w - 1, x + 4)
+
+            var count = 0
+            for (y in marginY until (h - marginY)) {
+                val row = y * w
+                val core = minOf(normLum[row + x], minOf(normLum[row + xL1], normLum[row + xR1]))
+                val lfBg = normLum[row + xL4]
+                val rtBg = normLum[row + xR4]
+                val isThinV = core < 228 && lfBg >= 198 && rtBg >= 198 && (minOf(lfBg, rtBg) - core >= 11)
+                vCand[y] = isThinV
+                if (isThinV) count++
+            }
+            if (count < minVRun / 2) continue
+
+            var lastTrue = -999
+            for (y in marginY until (h - marginY)) {
+                if (vCand[y]) {
+                    if (y - lastTrue in 2..7) {
+                        for (fillY in (lastTrue + 1) until y) vCand[fillY] = true
+                    }
+                    lastTrue = y
+                }
+            }
+
+            var runStart = -1
+            for (y in marginY until (h - marginY)) {
+                if (vCand[y]) {
+                    if (runStart < 0) runStart = y
+                } else {
+                    if (runStart >= 0 && (y - runStart) >= minVRun) {
+                        for (yy in runStart until y) {
+                            val r = yy * w
+                            val c0 = normLum[r + xL1]
+                            val c1 = normLum[r + x]
+                            val c2 = normLum[r + xR1]
+                            val targetX = if (c0 < c1 && c0 <= c2) xL1 else if (c2 < c1 && c2 < c0) xR1 else x
+                            pixels[r + targetX] = lineColor
+                        }
+                    }
+                    runStart = -1
+                }
+            }
+            if (runStart >= 0 && (h - marginY - runStart) >= minVRun) {
+                for (yy in runStart until (h - marginY)) {
+                    pixels[yy * w + x] = lineColor
+                }
+            }
+        }
+    }
+
+    /**
+     * [방식 B] 워드(Word)처럼 글자·표·배치 간격을 인식해 디지털 폰트와 벡터 표 선으로 새롭게 그리는 엔진:
+     * 1) 표의 가로·세로 선분들을 벡터 직선(Canvas.drawLine)으로 깨끗한 새 흰 종이 위에 먼저 제도한다.
+     * 2) 내장 ML Kit 한국어·영어 온디바이스 OCR로 모든 단어/구절의 정확한 좌표(BoundingBox)와 크기를 인식한다.
+     * 3) 같은 줄 안에서도 표 칸(열) 간격이 떨어진 단어들은 각각의 표 칸 위치에 맞춰 분리 렌더링하여
+     *    원본 문서의 표 정렬·들여쓰기·제목 크기를 그대로 유지한 채 깨끗한 디지털 글꼴로 새로 타이핑하듯 찍어낸다.
+     * 4) OCR이 인식하지 못한 특수기호·화살표·도표 그림 픽셀은 누락되지 않도록 자동으로 보존 합성한다.
+     */
+    private fun rebuildAsDigitalWordDocumentInPlace(
+        pixels: IntArray,
+        normLum: IntArray,
+        w: Int,
+        h: Int
+    ) {
+        val srcBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        srcBmp.setPixels(pixels, 0, w, 0, 0, w, h)
+        try {
+            val recognizer = koreanRecognizer ?: com.google.mlkit.vision.text.TextRecognition.getClient(
+                com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions.Builder().build()
+            ).also { koreanRecognizer = it }
+
+            val inputImage = com.google.mlkit.vision.common.InputImage.fromBitmap(srcBmp, 0)
+            val visionText = com.google.android.gms.tasks.Tasks.await(
+                recognizer.process(inputImage),
+                12,
+                java.util.concurrent.TimeUnit.SECONDS
+            )
+
+            // 1. 각 줄을 표 칸/탭 간격 단위의 구절(Phrase Run)로 분리 수집
+            data class PhraseItem(
+                val text: String,
+                val rect: android.graphics.Rect,
+                val isBold: Boolean
+            )
+
+            val phrases = ArrayList<PhraseItem>()
+            val heights = ArrayList<Int>()
+            for (block in visionText.textBlocks) {
+                for (line in block.lines) {
+                    val lb = line.boundingBox ?: continue
+                    if (lb.height() > 4) heights.add(lb.height())
+                }
+            }
+            if (heights.isEmpty()) return
+            heights.sort()
+            val medianLineH = heights[heights.size / 2].toFloat().coerceAtLeast(10f)
+
+            for (block in visionText.textBlocks) {
+                for (line in block.lines) {
+                    val elems = line.elements
+                    if (elems.isEmpty()) continue
+                    val lineBox = line.boundingBox ?: continue
+                    val isHeaderSize = lineBox.height().toFloat() >= medianLineH * 1.24f
+
+                    var curText = StringBuilder()
+                    var curRect: android.graphics.Rect? = null
+
+                    for (el in elems) {
+                        val eb = el.boundingBox ?: continue
+                        val prevR = curRect
+                        if (prevR == null) {
+                            curText.append(el.text)
+                            curRect = android.graphics.Rect(eb)
+                        } else {
+                            val gap = eb.left - prevR.right
+                            val maxGap = maxOf(prevR.height(), eb.height()) * 0.85f
+                            // 단어 사이 간격이 표 칸 경계이거나 넓은 탭 간격이면 별도 구절로 분리하여 표 열 정렬을 정확히 맞춤!
+                            if (gap > maxGap) {
+                                phrases.add(PhraseItem(curText.toString(), prevR, isHeaderSize))
+                                curText = StringBuilder(el.text)
+                                curRect = android.graphics.Rect(eb)
+                            } else {
+                                curText.append(" ").append(el.text)
+                                prevR.union(eb)
+                            }
+                        }
+                    }
+                    curRect?.let { r ->
+                        if (curText.isNotEmpty()) {
+                            phrases.add(PhraseItem(curText.toString(), r, isHeaderSize))
+                        }
+                    }
+                }
+            }
+
+            if (phrases.isEmpty()) return
+
+            // 2. 원본 픽셀에서 OCR 글자 영역만 순백색으로 지우고(표 테두리 선·밑줄·도표·특수기호는 그대로 보존!),
+            //    그 자리에 깔끔한 디지털 벡터 폰트로 텍스트를 새로 렌더링한다.
+            val coveredMask = BooleanArray(w * h)
+            for (ph in phrases) {
+                val r = ph.rect
+                val padX = maxOf(2, r.height() / 6)
+                val padY = maxOf(2, r.height() / 5)
+                val x0 = (r.left - padX).coerceIn(0, w - 1)
+                val x1 = (r.right + padX).coerceIn(0, w - 1)
+                val y0 = (r.top - padY).coerceIn(0, h - 1)
+                val y1 = (r.bottom + padY).coerceIn(0, h - 1)
+
+                for (yy in y0..y1) {
+                    val row = yy * w
+                    for (xx in x0..x1) {
+                        coveredMask[row + xx] = true
+                    }
+                }
+            }
+
+            // 표 테두리 선(가로·세로 긴 선분)은 글자 지우기 영역과 겹쳐도 지워지지 않게 보호!
+            val minHRun = maxOf(28, w / 9)
+            val minVRun = maxOf(24, h / 22)
+            val tableLineMask = BooleanArray(w * h)
+
+            for (y in 2 until (h - 2)) {
+                val row = y * w
+                var runStart = -1
+                for (x in 0 until w) {
+                    val isDark = (pixels[row + x] and 0xFF) < 160
+                    if (isDark) {
+                        if (runStart < 0) runStart = x
+                    } else {
+                        if (runStart >= 0 && (x - runStart) >= minHRun) {
+                            for (xx in runStart until x) tableLineMask[row + xx] = true
+                        }
+                        runStart = -1
+                    }
+                }
+                if (runStart >= 0 && (w - runStart) >= minHRun) {
+                    for (xx in runStart until w) tableLineMask[row + xx] = true
+                }
+            }
+
+            for (x in 2 until (w - 2)) {
+                var runStart = -1
+                for (y in 0 until h) {
+                    val isDark = (pixels[y * w + x] and 0xFF) < 160
+                    if (isDark) {
+                        if (runStart < 0) runStart = y
+                    } else {
+                        if (runStart >= 0 && (y - runStart) >= minVRun) {
+                            for (yy in runStart until y) tableLineMask[yy * w + x] = true
+                        }
+                        runStart = -1
+                    }
+                }
+                if (runStart >= 0 && (h - runStart) >= minVRun) {
+                    for (yy in runStart until h) tableLineMask[yy * w + x] = true
+                }
+            }
+
+            for (i in 0 until (w * h)) {
+                if (coveredMask[i] && !tableLineMask[i]) {
+                    pixels[i] = 0xFFFFFFFF.toInt()
+                }
+            }
+
+            val outBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            outBmp.setPixels(pixels, 0, w, 0, 0, w, h)
+            val canvas = Canvas(outBmp)
+
+            val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+                color = Color.parseColor("#14171A")
+                textAlign = Paint.Align.LEFT
+            }
+
+            for (ph in phrases) {
+                val r = ph.rect
+                val boxW = r.width().toFloat().coerceAtLeast(8f)
+                val boxH = r.height().toFloat().coerceAtLeast(8f)
+
+                textPaint.typeface = if (ph.isBold) {
+                    android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+                } else {
+                    android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+                }
+
+                // 글자 높이에 맞춘 기본 폰트 크기 설정 후, 원본 구절 가로 폭(boxW)에 맞게 자동 스케일 조절
+                var targetSize = (boxH * 0.84f).coerceIn(10f, 120f)
+                textPaint.textSize = targetSize
+                val measuredW = textPaint.measureText(ph.text)
+                if (measuredW > boxW * 1.04f && measuredW > 1f) {
+                    targetSize = (targetSize * (boxW * 1.02f) / measuredW).coerceAtLeast(8f)
+                    textPaint.textSize = targetSize
+                }
+
+                val fm = textPaint.fontMetrics
+                val baselineY = r.centerY().toFloat() - (fm.ascent + fm.descent) * 0.5f
+                canvas.drawText(ph.text, r.left.toFloat(), baselineY, textPaint)
+            }
+
+            // 글자 위에 표 테두리 선이 끊김 없이 지나가도록 표 선 픽셀 재강조
+            outBmp.getPixels(pixels, 0, w, 0, 0, w, h)
+            for (i in 0 until (w * h)) {
+                if (tableLineMask[i]) {
+                    pixels[i] = 0xFF1E2228.toInt()
+                }
+            }
+            outBmp.recycle()
+        } catch (_: Throwable) {
+            // OCR 타임아웃 등 예외 발생 시 방식 A(선명화된 원본 + 표 직선 복원) 결과 그대로 유지
+        } finally {
+            if (!srcBmp.isRecycled) srcBmp.recycle()
         }
     }
 
@@ -3573,44 +3932,64 @@ object DocumentQuadDetector {
                 if (!hit) botPts.add(x.toFloat() to (H * 0.94f))
             }
 
-            // 3. 2단계 이상치 제거 선형 회귀(Outlier-Rejected Line Fitting)로 4개 변의 직선 방정식 산출
-            //    (손가락이 종이 가장자리를 잡고 있어도 손가락 점들은 이상치로 걸러져 곧은 종이 테두리 직선을 유지함!)
+            // 3. RANSAC(인라이어 합의 기반 직선 피팅)으로 4개 변의 직선 방정식 산출:
+            //    종이 우하단 등 일부 구간에 유리 책상의 강한 흰색 빛반사(Specular Reflection)나 손가락이 맞닿아 있어도,
+            //    실제 일직선상에 놓인 종이 모서리 점들(오차 2.2px 이내 인라이어 다수결)만 정확히 선택하여
+            //    우하단 모서리가 빛반사 쪽으로 빠져나가는 현상을 100% 차단한다!
             fun fitLineLinear(indep: FloatArray, dep: FloatArray, defaultIntercept: Float): Pair<Float, Float> {
                 val n = indep.size
                 if (n < 3) return 0f to defaultIntercept
-                var sx = 0.0; var sy = 0.0; var sxx = 0.0; var sxy = 0.0
+
+                val sortedDep = dep.clone().also { it.sort() }
+                var bestA = 0f
+                var bestB = sortedDep[n / 2]
+                var bestScore = -1f
+                val tol = 2.2f
+
                 for (i in 0 until n) {
-                    val u = indep[i].toDouble()
-                    val v = dep[i].toDouble()
-                    sx += u; sy += v; sxx += u * u; sxy += u * v
+                    val u0 = indep[i]
+                    val v0 = dep[i]
+                    for (j in (i + 3) until n) {
+                        val du = indep[j] - u0
+                        if (kotlin.math.abs(du) < 1e-3f) continue
+                        val candA = (dep[j] - v0) / du
+                        if (kotlin.math.abs(candA) > 0.42f) continue
+                        val candB = v0 - candA * u0
+
+                        var score = 0f
+                        for (k in 0 until n) {
+                            val err = kotlin.math.abs(dep[k] - (candA * indep[k] + candB))
+                            if (err < tol) {
+                                score += (1f - err / tol)
+                            }
+                        }
+                        if (score > bestScore) {
+                            bestScore = score
+                            bestA = candA
+                            bestB = candB
+                        }
+                    }
                 }
-                val denom = n * sxx - sx * sx
-                if (kotlin.math.abs(denom) < 1e-5) return 0f to (sy / n).toFloat()
-                var a = ((n * sxy - sx * sy) / denom).toFloat()
-                var b = ((sy - a * sx) / n).toFloat()
 
-                // 잔차 상위 30% 이상치(손가락, 부분 그림자 등) 제거 후 2차 정밀 피팅
-                val residuals = FloatArray(n) { i -> kotlin.math.abs(dep[i] - (a * indep[i] + b)) }
-                val sortedRes = residuals.clone().also { it.sort() }
-                val cutoff = maxOf(3.0f, sortedRes[(n * 70 / 100).coerceIn(0, n - 1)])
-
-                var sx2 = 0.0; var sy2 = 0.0; var sxx2 = 0.0; var sxy2 = 0.0; var cnt = 0
+                // 선정된 RANSAC 직선에서 오차 tol(2.2px) 이내인 순수 인라이어 점들만으로 최종 정밀 직선 산출
+                var sx = 0.0; var sy = 0.0; var sxx = 0.0; var sxy = 0.0; var cnt = 0
                 for (i in 0 until n) {
-                    if (residuals[i] <= cutoff) {
+                    val err = kotlin.math.abs(dep[i] - (bestA * indep[i] + bestB))
+                    if (err <= tol) {
                         val u = indep[i].toDouble()
                         val v = dep[i].toDouble()
-                        sx2 += u; sy2 += v; sxx2 += u * u; sxy2 += u * v
+                        sx += u; sy += v; sxx += u * u; sxy += u * v
                         cnt++
                     }
                 }
                 if (cnt >= 3) {
-                    val d2 = cnt * sxx2 - sx2 * sx2
+                    val d2 = cnt * sxx - sx * sx
                     if (kotlin.math.abs(d2) > 1e-5) {
-                        a = ((cnt * sxy2 - sx2 * sy2) / d2).toFloat()
-                        b = ((sy2 - a * sx2) / cnt).toFloat()
+                        bestA = ((cnt * sxy - sx * sy) / d2).toFloat()
+                        bestB = ((sy - bestA * sx) / cnt).toFloat()
                     }
                 }
-                return a.coerceIn(-0.45f, 0.45f) to b
+                return bestA.coerceIn(-0.42f, 0.42f) to bestB
             }
 
             // 좌·우 변: x = a * y + b
@@ -3974,7 +4353,7 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
             )
         )
 
-        // [ 단일 | 배치 ] 전환 캡슐
+        // [ 단일 | 연속 ] 전환 캡슐
         val modePill = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
@@ -3996,7 +4375,7 @@ class DocumentCameraActivity : android.app.Activity(), android.view.TextureView.
             }
         }
         batchTabBtn = android.widget.TextView(this).apply {
-            text = "배치"
+            text = "연속"
             textSize = 13.5f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(dp(16f), dp(6f), dp(16f), dp(6f))
