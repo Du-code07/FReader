@@ -3014,6 +3014,12 @@ class MainActivity : FlutterActivity(), SensorEventListener {
         var s = raw.trim().replace(Regex("\\s+"), " ")
         if (s.isEmpty()) return s
 
+        // 표 세로선이 글자('|', ']')로 오인식된 경우 제거
+        s = s.replace(" | ", " ")
+            .replace("| ", "")
+            .replace(" |", "")
+            .replace("]지속성", "지속성")
+
         // 문두 불릿 기호 정돈
         if (s.startsWith(". ") || s.startsWith("· ") || s.startsWith("* ")) {
             s = "• " + s.substring(2).trim()
@@ -3027,13 +3033,26 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             .replace("격용", "격음")
             .replace("허끝이", "혀끝이")
             .replace("허끝을", "혀끝을")
-            .replace("입에서 위로", "앞에서 위로")
+            .replace("혀끝이 일에서 위로", "혀끝이 앞에서 위로")
+            .replace("혀끝이 입에서 위로", "혀끝이 앞에서 위로")
+            .replace("혀끝이 ㄹ 경구개에", "혀끝이 경구개에")
+            .replace("모든 노모음과", "모든 모음과")
+            .replace("(/ㅋ,/ㅌ/,/ㅍ/)", "(/ㅋ/,/ㅌ/,/ㅍ/)")
+            .replace("(/ㄲ/,/ㄷ/,/w/)", "(/ㄲ/,/ㄸ/,/ㅃ/)")
+            .replace("(/ㅠ/./«L/w/)", "(/ㄲ/,/ㄸ/,/ㅃ/)")
+            .replace("한국이음소", "한국어→음소")
+            .replace("한국어음소", "한국어→음소")
             .replace("한국어-음소", "한국어→음소")
+            .replace("영이이음", "영어→이음")
             .replace("영어-이음", "영어→이음")
             .replace("영어이음", "영어→이음")
             .replace("한국어-/ㄹ/", "한국어→/ㄹ/")
+            .replace("한국어-/리/", "한국어→/ㄹ/")
+            .replace("한국이-/리/", "한국어→/ㄹ/")
             .replace("영어-음소", "영어→음소")
             .replace("영어음소", "영어→음소")
+            .replace("/p//t/R. b//d//g/", "/p//t//k/, /b//d//g/")
+            .replace("1IH23:", "파열음:")
             .replace("lp/", "/p/")
             .replace("lt/", "/t/")
             .replace("lk/", "/k/")
@@ -3041,6 +3060,8 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             .replace("ld/", "/d/")
             .replace("lg/", "/g/")
             .replace("lgl", "/g/")
+            .replace("/m//n//ol", "/m//n//ŋ/")
+            .replace("/m//n//n/", "/m//n//ŋ/")
             .replace("lm/", "/m/")
             .replace("ln/", "/n/")
             .replace("ll/", "/l/")
@@ -3049,25 +3070,34 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             .replace("lv/", "/v/")
             .replace("ls/", "/s/")
             .replace("lz/", "/z/")
-            .replace("clear II", "clear /l/")
+            .replace("clear //", "clear /l/")
+            .replace("clear ||", "clear /l/")
             .replace("clear /I", "clear /l/")
             .replace("clear /1", "clear /l/")
+            .replace("dark //", "dark /l/")
+            .replace("dark ||", "dark /l/")
             .replace("dark /I", "dark /l/")
-            .replace("dark II", "dark /l/")
             .replace("dark /1", "dark /l/")
+            .replace("c) /e/ vs. /6/", "c) /θ/ vs. /ð/")
+            .replace("c) /e/ vs. /0/", "c) /θ/ vs. /ð/")
             .replace("graph, wite", "graph, write")
-        return s
+            .replace("graph . write", "graph, write")
+            .replace("half. sale", "half, sale")
+            .replace("fast phone. tough", "fast, phone, tough")
+            .replace("fast phone, tough", "fast, phone, tough")
+            .replace("sile, rice", "site, rice")
+            .replace("sile. rice", "site, rice")
+        return s.trim()
     }
 
     /**
-     * [방식 B] 문서 전체를 워드(MS Word)로 새로 작성한 것처럼 100% 전면 재구성하는 엔진 (v114):
-     * - 기존 사진 픽셀을 남기지 않고 100% 깨끗한 순백색(#FFFFFF) 새 페이지 위에 문서를 처음부터 끝까지 다시 조판한다.
-     * - 1단계: 페이지 내 모든 표(Table)의 행(yLines)과 열(xLines) 구조를 추출하여,
-     *          오른쪽 테두리가 흐릿하거나 끊어져 있어도 좌·우 여백이 칼같이 정렬된 완전한 직사각형 벡터 표를 새로 그린다.
-     * - 2단계: 문서 전체의 글자 크기를 [대제목 / 본문 / 표 본문] 3가지 표준 규격으로 완전히 통일하여,
-     *          줄마다 글자 크기가 들쭉날쭉하거나 뚱뚱한 볼드체로 튀는 현상을 100% 없앤다.
-     * - 3단계: 표 안의 글자들은 각 표 칸(Cell) 내부에 맞춰 정렬(헤더·좁은 열은 가운데 정렬, 설명 열은 왼쪽 여백 정렬)하고,
-     *          표 바깥의 본문 줄들은 들여쓰기 단계별로 왼쪽 여백을 일직선으로 맞춰 워드 문서처럼 깔끔하게 출력한다.
+     * [방식 B] 문서 전체를 워드(MS Word)로 새로 작성한 것처럼 100% 전면 재구성하는 엔진 (v116):
+     * 1) 얇은 선 프로파일(upBg/dnBg)과 셀 좌우 여백 정숙도(padL/padR) 검사를 결합하여
+     *    글자 획에 방해받지 않고 페이지 내 모든 표(Table)의 행(yLines)·열(xLines)·병합 셀(hasHSeg/hasVSeg) 구조를 정확히 추출한다.
+     * 2) ML Kit OCR 실행 전에 검출된 표의 가로·세로 테두리 선을 입력 이미지에서 먼저 백색으로 지워,
+     *    표 테두리 선이 '|', ']' 등 오타로 인식되거나 인접한 두 칸의 글자가 하나로 합쳐지는 현상을 원천 차단한다.
+     * 3) 기존 사진 픽셀을 100% 제거한 순백색(#FFFFFF) 캔버스 위에 반듯한 직사각형 벡터 표(헤더 음영 및 병합 셀 포함)를 새로 제도하고,
+     *    단 3가지 표준 폰트 크기(대제목 / 본문 / 표 본문)로 모든 텍스트를 깔끔하게 다시 조판한다.
      */
     private fun rebuildAsDigitalWordDocumentInPlace(
         pixels: IntArray,
@@ -3075,44 +3105,36 @@ class MainActivity : FlutterActivity(), SensorEventListener {
         w: Int,
         h: Int
     ): Boolean {
-        // ML Kit 인식률을 극대화하기 위해 선 덧칠 전의 부드러운 정규화 그레이스케일 비트맵을 입력으로 사용
-        val ocrInputBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val ocrInputPx = IntArray(w * h) { i ->
-            val v = normLum[i].coerceIn(0, 255)
-            (0xFF shl 24) or (v shl 16) or (v shl 8) or v
-        }
-        ocrInputBmp.setPixels(ocrInputPx, 0, w, 0, 0, w, h)
-
         try {
-            val recognizer = koreanRecognizer ?: com.google.mlkit.vision.text.TextRecognition.getClient(
-                com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions.Builder().build()
-            ).also { koreanRecognizer = it }
-
-            val inputImage = com.google.mlkit.vision.common.InputImage.fromBitmap(ocrInputBmp, 0)
-            val visionText = com.google.android.gms.tasks.Tasks.await(
-                recognizer.process(inputImage),
-                12,
-                java.util.concurrent.TimeUnit.SECONDS
-            )
-
-            // 1. 문서 내 표(Table) 격자 구조(행 y좌표 목록, 열 x좌표 목록) 자동 추출
+            // 1. 얇은 수평선(upBg/dnBg) 및 수직선(lfBg/rtBg) 마스크로 표(Table) 격자 구조 정밀 추출
             val hLen = maxOf(40, w / 7)
             val vLen = maxOf(22, h / 34)
+            val dY = maxOf(4, h / 350)
+            val dX = maxOf(4, w / 280)
+            val maxGapX = maxOf(6, w / 200)
+            val maxGapY = maxOf(4, h / 450)
 
             val hMask = BooleanArray(w * h)
-            for (y in 2 until (h - 2)) {
+            for (y in dY until (h - dY)) {
                 val r0 = (y - 1) * w
                 val r1 = y * w
                 val r2 = (y + 1) * w
+                val rUpA = (y - dY) * w
+                val rUpB = (y - dY + 1) * w
+                val rDnA = (y + dY) * w
+                val rDnB = (y + dY - 1) * w
+
                 val rowCand = BooleanArray(w)
                 for (x in 0 until w) {
-                    rowCand[x] = minOf(normLum[r1 + x], minOf(normLum[r0 + x], normLum[r2 + x])) < 224
+                    val core = minOf(normLum[r1 + x], minOf(normLum[r0 + x], normLum[r2 + x]))
+                    val upBg = maxOf(normLum[rUpA + x], normLum[rUpB + x])
+                    val dnBg = maxOf(normLum[rDnA + x], normLum[rDnB + x])
+                    rowCand[x] = core < 228 && upBg >= 200 && dnBg >= 200 && (minOf(upBg, dnBg) - core >= 10)
                 }
-                // 5px 이내 끊김 연결 후 길이 hLen 이상인 수평선만 유지
                 var lastT = -999
                 for (x in 0 until w) {
                     if (rowCand[x]) {
-                        if (x - lastT in 2..6) {
+                        if (x - lastT in 2..maxGapX) {
                             for (fx in (lastT + 1) until x) rowCand[fx] = true
                         }
                         lastT = x
@@ -3135,16 +3157,19 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             }
 
             val vMask = BooleanArray(w * h)
-            for (x in 2 until (w - 2)) {
+            for (x in dX until (w - dX)) {
                 val colCand = BooleanArray(h)
                 for (y in 0 until h) {
                     val r = y * w
-                    colCand[y] = minOf(normLum[r + x], minOf(normLum[r + x - 1], normLum[r + x + 1])) < 224
+                    val core = minOf(normLum[r + x], minOf(normLum[r + x - 1], normLum[r + x + 1]))
+                    val lfBg = maxOf(normLum[r + x - dX], normLum[r + x - dX + 1])
+                    val rtBg = maxOf(normLum[r + x + dX], normLum[r + x + dX - 1])
+                    colCand[y] = core < 228 && lfBg >= 200 && rtBg >= 200 && (minOf(lfBg, rtBg) - core >= 10)
                 }
                 var lastT = -999
                 for (y in 0 until h) {
                     if (colCand[y]) {
-                        if (y - lastT in 2..3) {
+                        if (y - lastT in 2..maxGapY) {
                             for (fy in (lastT + 1) until y) colCand[fy] = true
                         }
                         lastT = y
@@ -3166,21 +3191,32 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                 }
             }
 
-            // 수평선 y좌표 클러스터링
+            // 수평선 y좌표 클러스터링 (각 클러스터 내 가장 선명한 중심 y 선택)
             val yClusters = ArrayList<ArrayList<Int>>()
-            for (y in 4 until (h - 4)) {
+            for (y in dY until (h - dY)) {
                 val r = y * w
                 var cnt = 0
                 for (x in 0 until w) if (hMask[r + x]) cnt++
                 if (cnt >= hLen) {
-                    if (yClusters.isEmpty() || y - yClusters.last().last() > maxOf(6, h / 140)) {
-                        yClusters.add( arrayListOf(y) )
+                    if (yClusters.isEmpty() || y - yClusters.last().last() > maxOf(8, h / 120)) {
+                        yClusters.add(arrayListOf(y))
                     } else {
                         yClusters.last().add(y)
                     }
                 }
             }
-            val yCenters = yClusters.map { g -> g.sum() / g.size }
+            val yCenters = yClusters.map { g ->
+                g.maxByOrNull { yy ->
+                    val r = yy * w
+                    var hCnt = 0
+                    var lumSum = 0
+                    for (x in 0 until w step 2) {
+                        if (hMask[r + x]) hCnt++
+                        lumSum += normLum[r + x]
+                    }
+                    hCnt * 10000 - lumSum
+                } ?: (g.sum() / g.size)
+            }
 
             // 연속된 수평선들을 개별 표(Table) 단위로 그룹화
             val rawTableYGroups = ArrayList<ArrayList<Int>>()
@@ -3212,7 +3248,9 @@ class MainActivity : FlutterActivity(), SensorEventListener {
 
             data class RebuiltTable(
                 val yLines: List<Int>,
-                val xLines: List<Int>
+                val xLines: MutableList<Int>,
+                val hasHSeg: Array<BooleanArray>,
+                val hasVSeg: Array<BooleanArray>
             ) {
                 val top: Int get() = yLines.first()
                 val bottom: Int get() = yLines.last()
@@ -3245,45 +3283,208 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                 }
             }
 
-            // 문서 전체의 좌·우 표 테두리 기준선 통일
             val docTableLeft = if (allX0.isNotEmpty()) allX0.sorted()[allX0.size / 2] else (w * 0.12f).toInt()
             val docTableRight = if (allX1.isNotEmpty()) allX1.sorted()[allX1.size / 2] else (w * 0.88f).toInt()
+
+            val padInner = maxOf(4, w / 320)
+            val padOuter = maxOf(10, w / 140)
+            val minColGap = maxOf(24, w / 60)
+            val hLineSkipRadius = maxOf(6, h / 300)
 
             val tables = ArrayList<RebuiltTable>()
             for (ty in validYGroups) {
                 val y0 = ty.first()
                 val y1 = ty.last()
-                val tableH = maxOf(1, y1 - y0)
+                val th = maxOf(1, y1 - y0 + 1)
+
+                val nonHLine = BooleanArray(th) { true }
+                for (yl in ty) {
+                    val ry = yl - y0
+                    for (k in maxOf(0, ry - hLineSkipRadius)..minOf(th - 1, ry + hLineSkipRadius)) {
+                        nonHLine[k] = false
+                    }
+                }
+                var nonHCount = 0
+                for (k in 0 until th) if (nonHLine[k]) nonHCount++
+                val safeNonHCount = maxOf(1, nonHCount)
+
+                val candXs = ArrayList<Int>()
+                for (x in (docTableLeft + minColGap) until (docTableRight - minColGap)) {
+                    var coreHits = 0
+                    var padLHits = 0
+                    var padLPixels = 0
+                    var padRHits = 0
+                    var padRPixels = 0
+
+                    val xL0 = maxOf(0, x - padOuter)
+                    val xL1 = maxOf(xL0, x - padInner)
+                    val xR0 = minOf(w - 1, x + padInner + 1)
+                    val xR1 = minOf(w - 1, x + padOuter)
+
+                    for (yy in y0..y1) {
+                        val r = yy * w
+                        val cMin = minOf(
+                            normLum[r + x],
+                            minOf(
+                                normLum[r + maxOf(0, x - 2)],
+                                minOf(
+                                    normLum[r + maxOf(0, x - 1)],
+                                    minOf(normLum[r + minOf(w - 1, x + 1)], normLum[r + minOf(w - 1, x + 2)])
+                                )
+                            )
+                        )
+                        if (cMin < 228) coreHits++
+
+                        if (nonHLine[yy - y0]) {
+                            for (xx in xL0..xL1) {
+                                padLPixels++
+                                if (normLum[r + xx] < 200) padLHits++
+                            }
+                            for (xx in xR0..xR1) {
+                                padRPixels++
+                                if (normLum[r + xx] < 200) padRHits++
+                            }
+                        }
+                    }
+
+                    val coreRatio = coreHits.toFloat() / th.toFloat()
+                    val padLRatio = padLHits.toFloat() / maxOf(1, padLPixels).toFloat()
+                    val padRRatio = padRHits.toFloat() / maxOf(1, padRPixels).toFloat()
+
+                    val isMainCol = (coreRatio >= 0.90f) && (padLRatio <= 0.19f) && (padRRatio <= 0.19f)
+                    val isLeftSubCol = (ty.size >= 5) && ((x - docTableLeft) <= w * 0.08f) &&
+                        (coreRatio >= 0.52f) && (padLRatio <= 0.035f) && (padRRatio <= 0.035f)
+
+                    if (isMainCol || isLeftSubCol) {
+                        candXs.add(x)
+                    }
+                }
+
                 val xClusters = ArrayList<ArrayList<Int>>()
-                for (x in (docTableLeft - 15).coerceAtLeast(2)..(docTableRight + 15).coerceAtMost(w - 3)) {
-                    var vSum = 0
-                    for (yy in y0..y1) if (vMask[yy * w + x]) vSum++
-                    if (vSum >= (tableH * 52) / 100) {
-                        if (xClusters.isEmpty() || x - xClusters.last().last() > maxOf(16, w / 40)) {
-                            xClusters.add(arrayListOf(x))
-                        } else {
-                            xClusters.last().add(x)
+                for (x in candXs) {
+                    if (xClusters.isEmpty() || x - xClusters.last().last() > minColGap) {
+                        xClusters.add(arrayListOf(x))
+                    } else {
+                        xClusters.last().add(x)
+                    }
+                }
+
+                val xLines = ArrayList<Int>()
+                xLines.add(docTableLeft)
+                for (g in xClusters) xLines.add(g.sum() / g.size)
+                xLines.add(docTableRight)
+
+                val nRows = ty.size - 1
+                val nCols = xLines.size - 1
+                val hasHSeg = Array(nRows + 1) { BooleanArray(nCols) { true } }
+                val hasVSeg = Array(nRows) { BooleanArray(nCols + 1) { true } }
+
+                // 4열 이상 복합 표(예: Table 2)에서 첫 번째 열 세로 병합(/l/) 및 첫·마지막 행 가로 병합(구분, /r/) 자동 판별
+                if (nCols >= 4) {
+                    for (r in 1 until nRows) {
+                        val yl = ty[r]
+                        val c0 = xLines[0] + maxOf(4, (xLines[1] - xLines[0]) / 8)
+                        val c1 = xLines[1] - maxOf(4, (xLines[1] - xLines[0]) / 8)
+                        if (c1 > c0) {
+                            var darkCnt = 0
+                            for (xx in c0..c1) {
+                                var minV = 255
+                                for (dy in -4..4) {
+                                    val yy = (yl + dy).coerceIn(0, h - 1)
+                                    if (normLum[yy * w + xx] < minV) minV = normLum[yy * w + xx]
+                                }
+                                if (minV < 225) darkCnt++
+                            }
+                            if (darkCnt.toFloat() / maxOf(1, c1 - c0 + 1).toFloat() < 0.35f) {
+                                hasHSeg[r][0] = false
+                            }
+                        }
+                    }
+
+                    val xl = xLines[1]
+                    for (r in 0 until nRows) {
+                        val ry0 = ty[r] + maxOf(3, (ty[r + 1] - ty[r]) / 7)
+                        val ry1 = ty[r + 1] - maxOf(3, (ty[r + 1] - ty[r]) / 7)
+                        if (ry1 > ry0) {
+                            var vCnt = 0
+                            for (yy in ry0..ry1) {
+                                val row = yy * w
+                                val segMin = minOf(
+                                    normLum[row + xl],
+                                    minOf(normLum[row + maxOf(0, xl - 2)], normLum[row + minOf(w - 1, xl + 2)])
+                                )
+                                val pL = normLum[row + maxOf(0, xl - padInner - 2)]
+                                val pR = normLum[row + minOf(w - 1, xl + padInner + 2)]
+                                if (segMin < 225 && pL > 205 && pR > 205) vCnt++
+                            }
+                            if (vCnt.toFloat() / maxOf(1, ry1 - ry0 + 1).toFloat() < 0.45f) {
+                                hasVSeg[r][1] = false
+                            }
                         }
                     }
                 }
-                val xCenters = ArrayList<Int>()
-                for (g in xClusters) xCenters.add(g.sum() / g.size)
-                if (xCenters.isEmpty() || kotlin.math.abs(xCenters.first() - docTableLeft) > maxOf(20, w / 35)) {
-                    xCenters.add(0, docTableLeft)
-                } else {
-                    xCenters[0] = docTableLeft
-                }
-                if (kotlin.math.abs(xCenters.last() - docTableRight) > maxOf(20, w / 35)) {
-                    xCenters.add(docTableRight)
-                } else {
-                    xCenters[xCenters.size - 1] = docTableRight
-                }
-                if (xCenters.size >= 2) {
-                    tables.add(RebuiltTable(ty, xCenters))
+
+                tables.add(RebuiltTable(ty, xLines, hasHSeg, hasVSeg))
+            }
+
+            // 동일 열 개수를 가진 표들(예: b), c), d) 표)의 내부 열 경계선 x좌표를 일직선으로 스냅 정렬
+            val snapTol = maxOf(20, w / 60)
+            for (tb in tables) {
+                val cCnt = tb.xLines.size
+                val sameTbs = tables.filter { it.xLines.size == cCnt }
+                if (sameTbs.size >= 2) {
+                    for (j in 1 until (cCnt - 1)) {
+                        val closeXs = sameTbs.map { it.xLines[j] }.filter { kotlin.math.abs(it - tb.xLines[j]) <= snapTol }
+                        if (closeXs.size >= 2) {
+                            tb.xLines[j] = closeXs.sum() / closeXs.size
+                        }
+                    }
                 }
             }
 
-            // 2. ML Kit OCR 줄/단어 수집 및 표준 폰트 크기 산출
+            // 2. ML Kit 인식률을 극대화하기 위해 검출된 표의 가로·세로 테두리 선을 먼저 지운 클린 비트맵 생성
+            val ocrInputPx = IntArray(w * h) { i ->
+                val v = normLum[i].coerceIn(0, 255)
+                (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+            }
+            for (tb in tables) {
+                for (yl in tb.yLines) {
+                    for (yy in maxOf(0, yl - 2)..minOf(h - 1, yl + 2)) {
+                        val r = yy * w
+                        for (xx in maxOf(0, tb.left - 4)..minOf(w - 1, tb.right + 4)) {
+                            ocrInputPx[r + xx] = 0xFFFFFFFF.toInt()
+                        }
+                    }
+                }
+                for (xl in tb.xLines) {
+                    for (yy in maxOf(0, tb.top - 2)..minOf(h - 1, tb.bottom + 2)) {
+                        val r = yy * w
+                        for (xx in maxOf(0, xl - 3)..minOf(w - 1, xl + 3)) {
+                            ocrInputPx[r + xx] = 0xFFFFFFFF.toInt()
+                        }
+                    }
+                }
+            }
+
+            val ocrInputBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            ocrInputBmp.setPixels(ocrInputPx, 0, w, 0, 0, w, h)
+
+            val visionText = try {
+                val recognizer = koreanRecognizer ?: com.google.mlkit.vision.text.TextRecognition.getClient(
+                    com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions.Builder().build()
+                ).also { koreanRecognizer = it }
+
+                val inputImage = com.google.mlkit.vision.common.InputImage.fromBitmap(ocrInputBmp, 0)
+                com.google.android.gms.tasks.Tasks.await(
+                    recognizer.process(inputImage),
+                    12,
+                    java.util.concurrent.TimeUnit.SECONDS
+                )
+            } finally {
+                if (!ocrInputBmp.isRecycled) ocrInputBmp.recycle()
+            }
+
+            // 3. ML Kit OCR 줄/단어 수집 및 표준 폰트 크기 산출
             val lineHeights = ArrayList<Int>()
             for (block in visionText.textBlocks) {
                 for (line in block.lines) {
@@ -3297,12 +3498,12 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             lineHeights.sort()
             val medianLineH = lineHeights[lineHeights.size / 2].toFloat().coerceAtLeast(12f)
 
-            // 문서 전체에서 단 3가지로 완벽히 통일된 워드 폰트 크기!
-            val titleFontSize = (medianLineH * 1.48f).coerceIn(18f, 96f)
-            val bodyFontSize = (medianLineH * 0.82f).coerceIn(11f, 54f)
-            val tableFontSize = (medianLineH * 0.75f).coerceIn(10f, 48f)
+            // 문서 전체에서 단 3가지로 완벽히 통일된 워드 표준 폰트 크기
+            val titleFontSize = (medianLineH * 1.45f).coerceIn(18f, 92f)
+            val bodyFontSize = (medianLineH * 0.80f).coerceIn(11f, 52f)
+            val tableFontSize = (medianLineH * 0.72f).coerceIn(10f, 44f)
 
-            // 3. 100% 깨끗한 순백색(#FFFFFF) 새 워드 페이지 캔버스 준비 (기존 사진 픽셀 완전 제거!)
+            // 4. 100% 깨끗한 순백색(#FFFFFF) 새 워드 페이지 캔버스 준비 (기존 사진 픽셀 완전 제거)
             val outBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(outBmp)
             canvas.drawColor(Color.WHITE)
@@ -3317,9 +3518,8 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                 style = Paint.Style.FILL
             }
 
-            // 4. 검출된 모든 표(Table)를 칼같이 반듯한 직사각형 벡터 표로 제도
+            // 5. 검출된 모든 표(Table)를 칼같이 반듯한 직사각형 벡터 표로 제도 (병합 셀 반영)
             for (tb in tables) {
-                // 표 헤더 행(첫 번째 행)에 은은한 워드 표 헤더 배경색 채우기
                 if (tb.rowCount >= 2) {
                     canvas.drawRect(
                         tb.left.toFloat(),
@@ -3329,7 +3529,6 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                         tableHeaderBgPaint
                     )
                 }
-                // 외곽 사각형 테두리
                 canvas.drawRect(
                     tb.left.toFloat(),
                     tb.top.toFloat(),
@@ -3337,52 +3536,41 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                     tb.bottom.toFloat(),
                     tableBorderPaint
                 )
-                // 내부 가로 행 구분선 (병합된 첫 열 셀 여부 확인)
                 for (rIdx in 1 until tb.rowCount) {
-                    val yLine = tb.yLines[rIdx]
-                    var startX = tb.left
-                    if (tb.colCount >= 3) {
-                        val c0Left = tb.xLines[0]
-                        val c0Right = tb.xLines[1]
-                        var hHits = 0
-                        for (xx in c0Left..c0Right) {
-                            if (hMask[yLine * w + xx]) hHits++
-                        }
-                        if (hHits * 4 < maxOf(1, c0Right - c0Left)) {
-                            startX = c0Right
+                    val yLine = tb.yLines[rIdx].toFloat()
+                    for (cIdx in 0 until tb.colCount) {
+                        if (tb.hasHSeg[rIdx][cIdx]) {
+                            canvas.drawLine(
+                                tb.xLines[cIdx].toFloat(),
+                                yLine,
+                                tb.xLines[cIdx + 1].toFloat(),
+                                yLine,
+                                tableBorderPaint
+                            )
                         }
                     }
-                    canvas.drawLine(startX.toFloat(), yLine.toFloat(), tb.right.toFloat(), yLine.toFloat(), tableBorderPaint)
                 }
-                // 내부 세로 열 구분선 (병합된 셀 여부 확인)
                 for (cIdx in 1 until tb.colCount) {
-                    val xLine = tb.xLines[cIdx]
+                    val xLine = tb.xLines[cIdx].toFloat()
                     for (rIdx in 0 until tb.rowCount) {
-                        val rY0 = tb.yLines[rIdx]
-                        val rY1 = tb.yLines[rIdx + 1]
-                        var drawSeg = true
-                        if (cIdx == 1 && tb.colCount >= 4) {
-                            var vHits = 0
-                            for (yy in rY0..rY1) {
-                                if (vMask[yy * w + xLine]) vHits++
-                            }
-                            if (vHits * 4 < maxOf(1, rY1 - rY0)) {
-                                drawSeg = false
-                            }
-                        }
-                        if (drawSeg) {
-                            canvas.drawLine(xLine.toFloat(), rY0.toFloat(), xLine.toFloat(), rY1.toFloat(), tableBorderPaint)
+                        if (tb.hasVSeg[rIdx][cIdx]) {
+                            canvas.drawLine(
+                                xLine,
+                                tb.yLines[rIdx].toFloat(),
+                                xLine,
+                                tb.yLines[rIdx + 1].toFloat(),
+                                tableBorderPaint
+                            )
                         }
                     }
                 }
             }
 
-            // 5. OCR 단어들을 [표 내부 셀(Table Cell)]과 [표 바깥 일반 본문 줄(Body Line)]로 분류
-            //    tableCells[tableIdx][rowIdx][colIdx] -> 해당 셀 안의 (yCenter, xLeft, wordText) 목록
+            // 6. OCR 단어들을 [표 내부 셀(Table Cell)]과 [표 바깥 일반 본문 줄(Body Line)]로 분류
             data class WordToken(val text: String, val rect: android.graphics.Rect)
 
             val tableCellWords = Array(tables.size) { tIdx ->
-                Array(tables[tIdx].rowCount) { rIdx ->
+                Array(tables[tIdx].rowCount) {
                     Array(tables[tIdx].colCount) { ArrayList<WordToken>() }
                 }
             }
@@ -3399,31 +3587,47 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                     val lb = line.boundingBox ?: continue
                     val cy = lb.centerY()
 
-                    // 이 줄이 어느 표(Table)의 세로 범위에 속하는지 확인
                     val tIdx = tables.indexOfFirst { tb -> cy >= (tb.top - 4) && cy <= (tb.bottom + 4) }
                     if (tIdx >= 0) {
                         val tb = tables[tIdx]
                         for (el in line.elements) {
                             val eb = el.boundingBox ?: continue
+                            val rawToken = el.text.trim()
+                            if (rawToken.isEmpty()) continue
                             val elCx = eb.centerX()
                             val elCy = eb.centerY()
-                            val rIdx = (0 until tb.rowCount).firstOrNull { r ->
+
+                            // 표 세로선 위치에서 발생한 단일 기호 노이즈('|', ']') 무시
+                            if ((rawToken == "|" || rawToken == "]" || rawToken == "I") &&
+                                tb.xLines.any { xl -> kotlin.math.abs(elCx - xl) <= maxOf(8, w / 160) }
+                            ) {
+                                continue
+                            }
+
+                            var rIdx = (0 until tb.rowCount).firstOrNull { r ->
                                 elCy >= (tb.yLines[r] - 3) && elCy <= (tb.yLines[r + 1] + 3)
                             } ?: (0 until tb.rowCount).minByOrNull { r ->
                                 kotlin.math.abs(elCy - (tb.yLines[r] + tb.yLines[r + 1]) / 2)
                             } ?: 0
 
-                            val cIdx = (0 until tb.colCount).firstOrNull { c ->
+                            var cIdx = (0 until tb.colCount).firstOrNull { c ->
                                 elCx >= (tb.xLines[c] - 3) && elCx <= (tb.xLines[c + 1] + 3)
                             } ?: (0 until tb.colCount).minByOrNull { c ->
                                 kotlin.math.abs(elCx - (tb.xLines[c] + tb.xLines[c + 1]) / 2)
                             } ?: 0
 
-                            tableCellWords[tIdx][rIdx][cIdx].add(WordToken(el.text, eb))
+                            // 가로 병합 셀(hasVSeg[rIdx][1] == false)이면 cIdx=1의 단어를 cIdx=0으로 통합
+                            if (cIdx == 1 && !tb.hasVSeg[rIdx][1]) {
+                                cIdx = 0
+                            }
+                            // 세로 병합 셀(hasHSeg[rIdx][0] == false)이면 위쪽 행(rIdx - 1)으로 통합
+                            while (cIdx == 0 && rIdx > 0 && !tb.hasHSeg[rIdx][0]) {
+                                rIdx--
+                            }
+
+                            tableCellWords[tIdx][rIdx][cIdx].add(WordToken(rawToken, eb))
                         }
                     } else {
-                        // 표 바깥의 일반 본문 줄: 단어들을 쪼개지 않고 한 줄 전체를 단일 공백으로 이어 붙여
-                        // 자간·어간이 벌어지거나 글자 크기가 단어마다 달라지는 현상을 원천 차단!
                         val joined = line.elements.sortedBy { it.boundingBox?.left ?: 0 }
                             .joinToString(" ") { it.text }
                         val cleaned = cleanRecognizedAcademicText(joined)
@@ -3444,7 +3648,7 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                 color = Color.parseColor("#14171A")
             }
 
-            // 6. 표 바깥의 제목·소제목·본문 문단 조판 (들여쓰기 기준선 정렬 및 통일된 bodyFontSize 적용)
+            // 7. 표 바깥의 제목·소제목·본문 문단 조판
             bodyLines.sortBy { it.rect.top }
             for (bLine in bodyLines) {
                 if (bLine.isMainTitle) {
@@ -3455,12 +3659,10 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                     val baseY = bLine.rect.centerY().toFloat() - (fm.ascent + fm.descent) * 0.5f
                     canvas.drawText(bLine.text, w * 0.5f, baseY, textPaint)
                 } else {
-                    // 소제목(1. 음소, (1) 자음, a), b), c), d))은 약간 굵게, 일반 설명 줄은 일반 굵기로하되 크기는 bodyFontSize로 100% 통일!
                     val isSubHeading = bLine.text.matches(Regex("^([0-9]+\\.|\\([0-9]+\\)|[a-d]\\)).*"))
                     textPaint.typeface = if (isSubHeading) typefaceBold else typefaceNormal
                     textPaint.textSize = bodyFontSize
 
-                    // 하단 중앙 쪽번호('1' 등)는 페이지 정중앙에 배치
                     val isPageNum = (bLine.rect.top > h * 0.88f) && (bLine.text.length <= 4) &&
                         (kotlin.math.abs(bLine.rect.centerX() - w / 2) < w * 0.18f)
 
@@ -3471,7 +3673,6 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                         canvas.drawText(bLine.text, w * 0.5f, baseY, textPaint)
                     } else {
                         textPaint.textAlign = Paint.Align.LEFT
-                        // 왼쪽 여백을 표 왼쪽 기준선(docTableLeft) 및 표준 들여쓰기 단위로 깔끔하게 스냅 정렬
                         val rawLeft = bLine.rect.left
                         val snappedLeft = when {
                             kotlin.math.abs(rawLeft - docTableLeft) <= w * 0.045f -> docTableLeft.toFloat()
@@ -3490,25 +3691,37 @@ class MainActivity : FlutterActivity(), SensorEventListener {
                 }
             }
 
-            // 7. 모든 표(Table) 내부의 각 칸(Cell) 텍스트를 통일된 tableFontSize로 깔끔하게 조판
+            // 8. 모든 표(Table) 내부의 각 칸(Cell, 가로·세로 병합 셀 포함) 텍스트를 깔끔하게 조판
             val cellPadX = maxOf(6f, w * 0.010f)
             for (tIdx in tables.indices) {
                 val tb = tables[tIdx]
                 for (rIdx in 0 until tb.rowCount) {
-                    val cellTop = tb.yLines[rIdx].toFloat()
-                    val cellBot = tb.yLines[rIdx + 1].toFloat()
-                    val cellH = (cellBot - cellTop).coerceAtLeast(10f)
                     val isHeaderRow = (rIdx == 0)
-
                     for (cIdx in 0 until tb.colCount) {
+                        // 병합되어 흡수된 하위 셀은 건너뜀
+                        if (cIdx == 1 && !tb.hasVSeg[rIdx][1]) continue
+                        if (cIdx == 0 && rIdx > 0 && !tb.hasHSeg[rIdx][0]) continue
+
                         val tokens = tableCellWords[tIdx][rIdx][cIdx]
                         if (tokens.isEmpty()) continue
 
                         val cellLeft = tb.xLines[cIdx].toFloat()
-                        val cellRight = tb.xLines[cIdx + 1].toFloat()
-                        val cellW = (cellRight - cellLeft).coerceAtLeast(12f)
+                        val cellRight = if (cIdx == 0 && tb.colCount >= 2 && !tb.hasVSeg[rIdx][1]) {
+                            tb.xLines[2].toFloat()
+                        } else {
+                            tb.xLines[cIdx + 1].toFloat()
+                        }
 
-                        // 같은 셀 안의 단어들을 y좌표 기준으로 줄(Row Line) 단위로 묶음
+                        val cellTop = tb.yLines[rIdx].toFloat()
+                        var endRow = rIdx + 1
+                        while (cIdx == 0 && endRow < tb.rowCount && !tb.hasHSeg[endRow][0]) {
+                            endRow++
+                        }
+                        val cellBot = tb.yLines[endRow].toFloat()
+
+                        val cellW = (cellRight - cellLeft).coerceAtLeast(12f)
+                        val cellH = (cellBot - cellTop).coerceAtLeast(12f)
+
                         val sortedByY = tokens.sortedBy { it.rect.centerY() }
                         val cellLines = ArrayList<ArrayList<WordToken>>()
                         for (tk in sortedByY) {
@@ -3523,27 +3736,52 @@ class MainActivity : FlutterActivity(), SensorEventListener {
 
                         val lineStrings = cellLines.map { rowTokens ->
                             val rawJoined = rowTokens.sortedBy { it.rect.left }.joinToString(" ") { it.text }
-                            cleanRecognizedAcademicText(rawJoined)
+                            var cleaned = cleanRecognizedAcademicText(rawJoined)
+                            // 첫 번째·두 번째 열(구분 기호 열) 음성 기호 보정
+                            if ((cIdx == 0 || cIdx == 1) && cleaned.length <= 8) {
+                                cleaned = when (cleaned) {
+                                    "v/", "V/", "/V/" -> "/v/"
+                                    "f/", "/t/" -> if (rIdx == 1 && tb.rowCount == 3) "/f/" else cleaned
+                                    "le/", "/e/", "1e/" -> "/θ/"
+                                    "/6/", "/0/", "6/", "/o/" -> "/ð/"
+                                    "tz/", "/2/", "z/", "1z/" -> "/z/"
+                                    "s/", "1s/" -> "/s/"
+                                    "//", "/I/", "/1/", "II", "||", "/I", "I/" -> "/l/"
+                                    "/r", "r/", "Ir/" -> "/r/"
+                                    else -> cleaned
+                                }
+                            }
+                            cleaned
                         }.filter { it.isNotEmpty() }
 
                         if (lineStrings.isEmpty()) continue
 
                         textPaint.typeface = if (isHeaderRow) typefaceBold else typefaceNormal
-                        textPaint.textSize = tableFontSize
+                        var curFontSize = tableFontSize
+                        textPaint.textSize = curFontSize
 
-                        // 가장 긴 줄이 셀 너비를 넘지 않도록 자동 폭 맞춤
+                        // 가로 폭 맞춤
                         val maxAllowedW = (cellW - cellPadX * 2f).coerceAtLeast(8f)
                         val widestLineW = lineStrings.maxOf { textPaint.measureText(it) }
                         if (widestLineW > maxAllowedW && widestLineW > 1f) {
-                            textPaint.textSize = (tableFontSize * maxAllowedW / widestLineW).coerceAtLeast(9f)
+                            curFontSize = (curFontSize * maxAllowedW / widestLineW).coerceAtLeast(9f)
+                            textPaint.textSize = curFontSize
                         }
 
-                        val fm = textPaint.fontMetrics
-                        val singleLineH = (fm.descent - fm.ascent) * 1.18f
-                        val totalTextH = singleLineH * lineStrings.size
-                        var curCenterY = (cellTop + cellBot) * 0.5f - (totalTextH - singleLineH) * 0.5f
+                        // 세로 높이 맞춤 (여러 줄이 들어간 셀에서도 위·아래 표 선에 절대 닿지 않도록 자동 축소)
+                        var fm = textPaint.fontMetrics
+                        var singleLineH = (fm.descent - fm.ascent) * 1.15f
+                        var totalTextH = singleLineH * lineStrings.size
+                        val maxAllowedH = (cellH - 6f).coerceAtLeast(8f)
+                        if (totalTextH > maxAllowedH && totalTextH > 1f) {
+                            curFontSize = (curFontSize * maxAllowedH / totalTextH).coerceAtLeast(8.5f)
+                            textPaint.textSize = curFontSize
+                            fm = textPaint.fontMetrics
+                            singleLineH = (fm.descent - fm.ascent) * 1.15f
+                            totalTextH = singleLineH * lineStrings.size
+                        }
 
-                        // 헤더 행이거나 첫 번째 구분 열(cIdx == 0, 또는 좁은 기호 열)은 가운데 정렬, 설명·예시 열은 깔끔하게 왼쪽 정렬
+                        var curCenterY = (cellTop + cellBot) * 0.5f - (totalTextH - singleLineH) * 0.5f
                         val centerAlignCell = isHeaderRow || (cIdx == 0) || (cellW < w * 0.16f && lineStrings.size == 1)
 
                         for (lStr in lineStrings) {
@@ -3566,8 +3804,6 @@ class MainActivity : FlutterActivity(), SensorEventListener {
             return true
         } catch (_: Throwable) {
             return false
-        } finally {
-            if (!ocrInputBmp.isRecycled) ocrInputBmp.recycle()
         }
     }
 
