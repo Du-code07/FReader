@@ -27,6 +27,14 @@ jobs:
 
       - name: 4. Generate Android Platform Files & Configure FReader Store Release (com.freader.my_ebook_reader)
         run: |
+          # 하위 폴더(예: FReader_v116_update_files 등)로 업로드된 경우에도 루트에 자동 병합
+          for SUBDIR in $(find . -mindepth 1 -maxdepth 2 -type d \( -name "FReader*" -o -name "*update*" -o -name "*code*" \) | sort -V); do
+            if [ -d "$SUBDIR/android_override" ] || [ -d "$SUBDIR/lib" ]; then
+              echo "Merging uploaded subdirectory $SUBDIR into root..."
+              cp -rf "$SUBDIR"/* . 2>/dev/null || true
+            fi
+          done
+
           if [ ! -f "lib/screens/pdf_and_image_viewer.dart" ]; then
             FOUND_PUBSPEC=$(find . -maxdepth 3 -name "pubspec.yaml" | grep -v "^\./pubspec\.yaml$" | head -n 1)
             if [ -n "$FOUND_PUBSPEC" ]; then
@@ -35,6 +43,8 @@ jobs:
               cp -rf "$SUBDIR"/* .
             fi
           fi
+
+          mkdir -p assets/docx/fonts/metric assets/docx/fonts/free
 
           if ! grep -q "BookshelfScreen" lib/main.dart; then
             echo "ERROR: lib/main.dart에 BookshelfScreen이 없습니다! GitHub 저장소에 lib/ 폴더가 제대로 올라갔는지 확인해주세요."
